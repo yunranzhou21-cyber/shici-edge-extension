@@ -1,10 +1,12 @@
-import { canonicalize, queryText, limited, favorite, cleanSource, uid, now, validateBackup, mergeBackup, makeBackup } from './lib/core.js';
+import { canonicalize, queryText, limited, favorite, cleanSource, uid, now, validateBackup, mergeBackup, makeBackup, searchEntries } from './lib/core.js';
+import { preferences, preferencePatch } from './lib/preferences.js';
 import { readState, mutateState } from './lib/storage.js';
 import { lookupLocal } from './lib/dictionary.js';
 import { validateSettings, hostPattern, callProvider } from './lib/providers.js';
 
 chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'});
 const managerUrl = chrome.runtime.getURL('manager.html');
+const widgetUrl = chrome.runtime.getURL('widget.html');
 const cache = new Map();
 async function openManager(hash='') { await chrome.tabs.create({url:managerUrl + hash}); }
 chrome.action.onClicked.addListener(()=>openManager());
@@ -18,6 +20,11 @@ chrome.commands.onCommand.addListener(async command => {
   } catch { await openManager('#unsupported'); }
 });
 const privileged = new Set(['STATE','EXPORT','IMPORT','DELETE_ENTRY','EDIT_ENTRY','DELETE_HISTORY','CLEAR_HISTORY','GET_SETTINGS','SAVE_SETTINGS','DELETE_KEY','TEST_CONNECTION']);
+const widgetOnly = new Set(['WIDGET_DATA','SET_UI_PREFERENCES','SET_AI_ENABLED']);
+async function broadcastPreferences(value) {
+  const tabs=await chrome.tabs.query({});
+  await Promise.allSettled(tabs.filter(t=>t.id).map(t=>chrome.tabs.sendMessage(t.id,{type:'UI_PREFERENCES_CHANGED',preferences:value})));
+}
 function sourceFor(message,sender) {
   if (!sender.tab) return cleanSource(message.source);
   const url = sender.tab.url || sender.url;
@@ -28,8 +35,39 @@ function sourceFor(message,sender) {
 async function settingsAndKey() { return chrome.storage.local.get(['ai','apiKey']); }
 async function handle(message,sender) {
   const trusted = sender.url?.split('#')[0] === managerUrl && !sender.tab?.url?.startsWith('http');
+  const widget = sender.url?.split('#')[0] === widgetUrl;
   if (sender.id !== chrome.runtime.id || !message || typeof message.type !== 'string' || (privileged.has(message.type) && !trusted)) throw new Error('请求来源不受支持');
+  if(widgetOnly.has(message.type) && !trusted && !widget)throw new Error('请求来源不受支持');
   switch (message.type) {
+    case 'GET_UI_PREFERENCES': return preferences((await chrome.storage.local.get('uiPreferences')).uiPreferences);
+    case 'SAVE_WIDGET_POSITION': {
+      if(!Number.isFinite(message.x)||!Number.isFinite(message.y))throw new Error('位置无效');
+      const {uiPreferences}=await chrome.storage.local.get('uiPreferences');
+      const value=preferences({...uiPreferences,x:message.x,y:message.y});
+      await chrome.storage.local.set({uiPreferences:value});return value;
+    }
+    case 'SET_UI_PREFERENCES': {
+      const patch=preferencePatch(message.patch);
+      const {uiPreferences}=await chrome.storage.local.get('uiPreferences');
+      const value=preferences({...uiPreferences,...patch});
+      await chrome.storage.local.set({uiPreferences:value});
+      await broadcastPreferences(value);return value;
+    }
+    case 'WIDGET_DATA': {
+      const [{ai,apiKey,uiPreferences},commands,state]=await Promise.all([chrome.storage.local.get(['ai','apiKey','uiPreferences']),chrome.commands.getAll(),readState()]);
+      const entries=searchEntries(state.vocabulary,limited(message.query,200)).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
+      const offset=Number.isInteger(message.offset)&&message.offset>=0?message.offset:0;
+      return {preferences:preferences(uiPreferences),shortcut:commands.find(c=>c.name==='lookup-selection')?.shortcut||'',aiEnabled:!!(ai?.enabled&&apiKey),aiConfigured:!!(ai&&apiKey),total:state.vocabulary.length,matched:entries.length,entries:entries.slice(offset,offset+30)};
+    }
+    case 'SET_AI_ENABLED': {
+      if(typeof message.enabled!=='boolean')throw new Error('设置格式无效');
+      const {ai,apiKey}=await settingsAndKey();
+      if(!ai)return message.enabled?{needsSettings:true}:{enabled:false};
+      if(message.enabled&&!apiKey)return {needsSettings:true};
+      await chrome.storage.local.set({ai:{...ai,enabled:message.enabled}});cache.clear();return {enabled:message.enabled};
+    }
+    case 'OPEN_SHORTCUTS': await chrome.tabs.create({url:'edge://extensions/shortcuts'});return true;
+    case 'OPEN_VOCABULARY': await openManager('#vocabulary');return true;
     case 'STATE': return readState();
     case 'LOOKUP': {
       const originalText = queryText(message.text);

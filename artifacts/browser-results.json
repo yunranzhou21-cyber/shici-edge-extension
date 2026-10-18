@@ -1,5 +1,5 @@
 {
-  "testedAt": "2026-10-18T16:57:08.323Z",
+  "testedAt": "2026-10-18T17:34:44.618Z",
   "browser": "Microsoft Edge headless",
   "checks": [
     "Unpacked extension loaded in Microsoft Edge",
@@ -9,6 +9,11 @@
     "English and Chinese search work after reload",
     "JSON roundtrip, deduplication, invalid-import atomicity and independent history clearing",
     "Unconfigured AI asks for settings without sending a model request",
+    "Ordinary webpages show only a circular launcher; no automatic lookup or API call",
+    "Dragging moves the circular icon without opening the panel and remembers position after reload",
+    "Floating panel searches English and Chinese favorites inside an extension-origin iframe inaccessible to the host page",
+    "Floating settings change icon size and opacity; shortcut button opens the real browser editor",
+    "Panel closes to the circle; hidden icons can be restored from manager settings; preferences persist",
     "No translation on selection; explicit injection opens card; Escape closes it",
     "Empty selection shows guidance without recording history",
     "Sensitive textarea selection is not queried or recorded",

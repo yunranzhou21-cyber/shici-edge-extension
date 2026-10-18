@@ -2,12 +2,84 @@
   if (globalThis.__shiciInstalled) return;
   globalThis.__shiciInstalled = true;
   let host, root, active, previousFocus, generation=0;
+  let widgetHost, widgetRoot, bubble, frame, uiPreferences, dragging;
   const send = async message => {
     const result=await chrome.runtime.sendMessage(message);
     if(!result?.ok)throw new Error(result?.error||'扩展连接已断开，请刷新页面');
     return result.data;
   };
   function el(tag,text,cls) {const node=document.createElement(tag);if(text)node.textContent=text;if(cls)node.className=cls;return node;}
+  function placeWidget() {
+    if(!widgetHost||!uiPreferences)return;
+    const size=uiPreferences.size, maxX=Math.max(0,innerWidth-size-24), maxY=Math.max(0,innerHeight-size-24);
+    const left=12+uiPreferences.x*maxX, top=12+uiPreferences.y*maxY;
+    widgetHost.style.setProperty('left',left+'px','important');widgetHost.style.setProperty('top',top+'px','important');
+    bubble.style.width=bubble.style.height=size+'px';bubble.style.opacity=uiPreferences.opacity;
+    if(frame){
+      const width=Math.min(380,Math.max(0,innerWidth-24));let height=Math.min(560,Math.max(0,innerHeight-24));
+      const above=Math.max(0,top-24),below=Math.max(0,innerHeight-top-size-24);
+      let panelLeft=Math.max(12,Math.min(left+size-width,innerWidth-width-12)),panelTop;
+      if(below>=height)panelTop=top+size+12;
+      else if(above>=height)panelTop=top-height-12;
+      else if(left>=width+24){panelLeft=left-width-12;panelTop=Math.max(12,Math.min(top,innerHeight-height-12));}
+      else if(innerWidth-left-size>=width+24){panelLeft=left+size+12;panelTop=Math.max(12,Math.min(top,innerHeight-height-12));}
+      else {height=Math.min(height,Math.max(above,below));panelTop=above>below?top-height-12:top+size+12;}
+      frame.style.width=width+'px';frame.style.height=height+'px';
+      frame.style.left=panelLeft+'px';frame.style.top=panelTop+'px';
+    }
+  }
+  function collapseWidget(restoreFocus=false) {
+    frame?.remove();frame=null;bubble?.setAttribute('aria-expanded','false');
+    if(restoreFocus)bubble?.focus({preventScroll:true});
+  }
+  function expandWidget() {
+    if(frame){collapseWidget();return;}
+    if(host)close();
+    frame=el('iframe');frame.title='拾词收藏与设置';frame.src=chrome.runtime.getURL('widget.html');frame.referrerPolicy='no-referrer';
+    widgetRoot.append(frame);bubble.setAttribute('aria-expanded','true');placeWidget();
+  }
+  function applyPreferences(value) {
+    uiPreferences=value;
+    if(!value.visible){collapseWidget();widgetHost?.remove();widgetHost=null;return;}
+    if(!widgetHost){
+      widgetHost=el('div');widgetHost.id='shici-widget-host';
+      widgetHost.style.cssText='all:initial!important;position:fixed!important;z-index:2147483646!important;display:block!important;';
+      widgetRoot=widgetHost.attachShadow({mode:'open'});
+      const style=el('style');style.textContent=`:host{color-scheme:light}button{box-sizing:border-box;border:1px solid #ffffff85;border-radius:50%;background:#2e624e;color:#fff;font:600 21px/1 system-ui,"Microsoft YaHei",sans-serif;cursor:grab;touch-action:none;user-select:none;box-shadow:0 4px 18px #1236293d;display:grid;place-items:center;padding:0}button:hover{filter:brightness(1.1)}button:active{cursor:grabbing}button:focus-visible{outline:3px solid #81af85;outline-offset:3px}iframe{position:fixed;border:1px solid #d5e2d6;border-radius:18px;background:#fafcf8;box-shadow:0 14px 50px #173e2933;color-scheme:light}`;
+      bubble=el('button','拾');bubble.type='button';bubble.title='拾词：点击展开，拖动调整位置';bubble.setAttribute('aria-label','展开拾词收藏与设置');bubble.setAttribute('aria-expanded','false');
+      let suppressClick=false;
+      bubble.addEventListener('pointerdown',event=>{
+        if(event.button!==0)return;
+        const rect=widgetHost.getBoundingClientRect();dragging={id:event.pointerId,x:event.clientX,y:event.clientY,left:rect.left,top:rect.top,moved:false};suppressClick=false;
+        bubble.setPointerCapture(event.pointerId);event.preventDefault();
+      });
+      bubble.addEventListener('pointermove',event=>{
+        if(!dragging||event.pointerId!==dragging.id)return;
+        const dx=event.clientX-dragging.x,dy=event.clientY-dragging.y;
+        if(!dragging.moved&&Math.hypot(dx,dy)<5)return;
+        dragging.moved=true;suppressClick=true;collapseWidget();
+        const size=uiPreferences.size,maxX=Math.max(0,innerWidth-size-24),maxY=Math.max(0,innerHeight-size-24);
+        uiPreferences={...uiPreferences,x:maxX?Math.max(0,Math.min(1,(dragging.left+dx-12)/maxX)):0,y:maxY?Math.max(0,Math.min(1,(dragging.top+dy-12)/maxY)):0};
+        placeWidget();
+      });
+      function endDrag(event){
+        if(!dragging||event.pointerId!==dragging.id)return;
+        const moved=dragging.moved;dragging=null;
+        if(bubble.hasPointerCapture(event.pointerId))bubble.releasePointerCapture(event.pointerId);
+        if(moved)send({type:'SAVE_WIDGET_POSITION',x:uiPreferences.x,y:uiPreferences.y}).catch(()=>{});
+      }
+      bubble.addEventListener('pointerup',endDrag);bubble.addEventListener('pointercancel',endDrag);
+      bubble.onclick=()=>{if(suppressClick){suppressClick=false;return;}expandWidget();};
+      widgetRoot.append(style,bubble);document.documentElement.append(widgetHost);
+    }
+    placeWidget();
+  }
+  // The panel is an extension-origin iframe: host pages cannot read its favorites or settings DOM.
+  window.addEventListener('message',event=>{
+    if(frame&&event.source===frame.contentWindow&&event.origin===chrome.runtime.getURL('').replace(/\/$/,'')&&event.data?.type==='SHICI_WIDGET_CLOSE')collapseWidget(true);
+  });
+  document.addEventListener('pointerdown',event=>{if(frame&&!event.composedPath().includes(widgetHost))collapseWidget();},true);
+  window.addEventListener('resize',placeWidget);
   function close() {generation++;host?.remove();host=null;root=null;previousFocus?.focus?.({preventScroll:true});}
   function sensitive(node) {
     const element=node?.nodeType===1?node:node?.parentElement;
@@ -65,9 +137,10 @@
       if(explanation.needsSettings){output.textContent='AI 默认关闭或尚未配置，已打开设置；本次未调用模型。';await send({type:'OPEN_SETTINGS'});}
       else output.textContent=(explanation.cached?'缓存结果 · ':'')+explanation.text;
     },actions);
-    card.append(el('small',result.source?.type==='youtube'?'视频已暂停，请手动继续播放。':'本机记录 · 不自动收藏'));
+    card.append(el('small',result.videoPaused?'视频已暂停，请手动继续播放。':'本机记录 · 不自动收藏'));
   }
   async function trigger() {
+    collapseWidget();
     const selection=window.getSelection();
     const blocked=sensitive(document.activeElement)||sensitive(selection?.anchorNode)||sensitive(selection?.focusNode);
     const text=blocked?'':selection?.toString().trim();
@@ -88,9 +161,9 @@
     const card=shell(rect);const current=++generation;
     if(!text){card.append(el('p',blocked?'此输入区域不取词。请在普通网页正文选中英文，或到单词本手动输入。':'请先选中英文单词或短语'));return;}
     if(text.length>200){card.append(el('p','请选择 200 字符以内的英文单词或短语'));return;}
-    let timestampSeconds;
+    let timestampSeconds,videoPaused=false;
     if(/(^|\.)youtube\.com$/.test(location.hostname)) {
-      const video=document.querySelector('video');if(video){timestampSeconds=video.currentTime;video.pause();}
+      const video=document.querySelector('video');if(video){timestampSeconds=video.currentTime;video.pause();videoPaused=video.paused;}
     }
     const loading=el('p','查询中…');card.append(loading);
     const badge=el('p','正在检查收藏…');card.append(badge);
@@ -98,9 +171,10 @@
     try {
       const result=await send({type:'LOOKUP',text,context,source:{timestampSeconds}});
       if(current!==generation)return;
-      loading.remove();badge.remove();renderResult(card,result);
+      loading.remove();badge.remove();renderResult(card,{...result,videoPaused});
     }catch(error){if(current===generation){loading.textContent=error.message;badge.remove();}}
   }
-  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&host){event.preventDefault();close();}},true);
-  chrome.runtime.onMessage.addListener(message=>{if(message.type==='TRIGGER_LOOKUP')trigger();});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'){if(host){event.preventDefault();close();}if(frame)collapseWidget(true);}},true);
+  chrome.runtime.onMessage.addListener(message=>{if(message.type==='TRIGGER_LOOKUP')trigger();if(message.type==='UI_PREFERENCES_CHANGED')applyPreferences(message.preferences);});
+  send({type:'GET_UI_PREFERENCES'}).then(applyPreferences).catch(()=>{});
 })();

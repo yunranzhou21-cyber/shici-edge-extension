@@ -68,7 +68,10 @@ function renderLookup(){
   action(actions,'解释原句',async()=>{output.textContent='解释中…';try{const result=await send({type:'EXPLAIN',text:lookup.originalText,context:$('lookup-context').value});if(result.needsSettings){output.textContent='尚未配置或启用 AI，本次未调用模型。';location.hash='settings';$('ai-form').scrollIntoView({behavior:'smooth'});}else output.textContent=(result.cached?'缓存结果 · ':'')+result.text;}catch(e){output.textContent=e.message;}});
 }
 $('clear-history').onclick=async()=>{try{if(await confirmAction('清空全部查询历史？收藏和原语境记录会保留。')){await send({type:'CLEAR_HISTORY'});await refresh();}}catch(e){notice(e.message,true);}};
-$('shortcuts').onclick=()=>chrome.tabs.create({url:'edge://extensions/shortcuts'});
+$('shortcuts').onclick=()=>send({type:'OPEN_SHORTCUTS'}).catch(e=>notice(e.message,true));
+async function loadWidgetSettings(){const value=await send({type:'GET_UI_PREFERENCES'});$('widget-visible').checked=value.visible;$('widget-size').value=value.size;const opacity=$('widget-opacity');const custom=opacity.querySelector('[data-custom]');custom?.remove();if(![...opacity.options].some(o=>Number(o.value)===value.opacity)){const option=el('option',Math.round(value.opacity*100)+'%');option.value=value.opacity;option.dataset.custom='true';opacity.append(option);}opacity.value=value.opacity;}
+$('widget-form').onsubmit=async event=>{event.preventDefault();try{await send({type:'SET_UI_PREFERENCES',patch:{visible:$('widget-visible').checked,size:Number($('widget-size').value),opacity:Number($('widget-opacity').value)}});$('widget-feedback').textContent='已保存，已打开的网页也会更新。';}catch(e){$('widget-feedback').textContent=e.message;}};
+$('widget-reset-position').onclick=async()=>{try{await send({type:'SET_UI_PREFERENCES',patch:{x:1,y:0.8}});$('widget-feedback').textContent='图标已重置到右侧。';}catch(e){$('widget-feedback').textContent=e.message;}};
 $('provider').onchange=()=>{$('base-url').value=PROVIDERS[$('provider').value].baseUrl;$('model').value='';$('api-key').value='';};
 async function loadSettings(){const data=await send({type:'GET_SETTINGS'});const ai=data.ai||{provider:'gemini',baseUrl:PROVIDERS.gemini.baseUrl,model:'',enabled:false};$('provider').value=ai.provider;$('base-url').value=ai.baseUrl;$('model').value=ai.model;$('ai-enabled').checked=ai.enabled;$('key-status').textContent=data.hasKey?'（已保存，不回填）':'（未保存）';}
 $('ai-form').onsubmit=async event=>{
@@ -89,12 +92,13 @@ $('test-connection').onclick=async()=>{
 $('delete-key').onclick=async()=>{try{await send({type:'DELETE_KEY'});$('api-key').value='';await loadSettings();$('ai-feedback').textContent='密钥已删除。';}catch(e){notice(e.message,true);}};
 $('export').onclick=async()=>{try{const backup=await send({type:'EXPORT'});const url=URL.createObjectURL(new Blob([JSON.stringify(backup,null,2)],{type:'application/json'}));const a=el('a');a.href=url;a.download=`拾词备份-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);notice('已生成备份文件，不包含 API Key。');}catch(e){notice(e.message,true);}};
 $('import').onchange=async()=>{const file=$('import').files[0];if(!file)return;try{const backup=JSON.parse(await file.text());const r=await send({type:'IMPORT',backup});await refresh();notice(`导入完成：处理 ${r.vocabulary} 条收藏、${r.history} 条历史；重复记录已合并。`);}catch(e){notice(`导入失败：${e.message}。原有数据未修改。`,true);}finally{$('import').value='';}};
-chrome.storage.onChanged.addListener(()=>loadSettings().catch(()=>{}));
-window.addEventListener('focus',()=>refresh().catch(e=>notice(e.message,true)));
+chrome.storage.onChanged.addListener(changes=>{if(changes.ai||changes.apiKey)loadSettings().catch(()=>{});if(changes.uiPreferences)loadWidgetSettings().catch(()=>{});});
+async function refreshShortcut(){const commands=await chrome.commands.getAll();const shortcut=commands.find(c=>c.name==='lookup-selection')?.shortcut;$('shortcut').textContent=shortcut||'未绑定：请设置快捷键';return shortcut;}
+window.addEventListener('focus',()=>Promise.all([refresh(),refreshShortcut(),loadWidgetSettings()]).catch(e=>notice(e.message,true)));
 try{
-  await Promise.all([refresh(),loadSettings()]);
+  await Promise.all([refresh(),loadSettings(),loadWidgetSettings()]);
   const metadata=await fetch('data/metadata.json').then(r=>r.json());$('dictionary-info').textContent=`ECDICT 常用词子集 · ${metadata.entries.toLocaleString('zh-CN')} 词条 · 完全离线，无调用费。`;
-  const commands=await chrome.commands.getAll();const shortcut=commands.find(c=>c.name==='lookup-selection')?.shortcut;$('shortcut').textContent=shortcut||'未绑定：请设置快捷键';
+  const shortcut=await refreshShortcut();
   if(!shortcut)notice('查词快捷键未绑定或发生冲突，请到设置修改。');
   readHash();
 }catch(e){notice(e.message,true);}

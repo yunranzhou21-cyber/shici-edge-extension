@@ -2,6 +2,19 @@
 
 根据 [产品需求](docs/requirements.md) 实现的阶段 A 扩展。没有后端、账户、打卡或自动全页标记。普通查词完全离线；AI 默认为关闭。
 
+## v0.2.0：网页圆形图标与浮框
+
+普通 HTTP/HTTPS 网页会自动显示一个可拖动的圆形“拾”图标。点击展开收藏与设置，平时保持圆形；拖动不会误展开，位置在松开后保存，刷新页面或重启浏览器仍保留。点击页面空白、收起按钮或按 Escape 可收起面板。
+
+- **收藏**：直接在网页查看和搜索英文、中文释义、原始词形与语境，点击来源可回原网页。需要编辑、删除、备份时打开完整单词本。
+- **设置**：调整图标大小、透明度、重置位置、隐藏图标；也可切换已配置的主动 AI 解释。未配置 API 时会引导至完整设置，不会假装启用或发送请求。
+- **快捷键**：原本已可在管理页修改；现在浮框“设置 → 修改快捷键”也能打开 `edge://extensions/shortcuts`。返回浮框后会读取当前绑定。组合键需在 Edge 自带编辑页更改。
+- **重新显示**：隐藏图标后，点击浏览器工具栏的拾词 → 设置 → 网页圆形浮框 → 勾选显示并保存。
+
+为常驻显示图标，此版本增加普通 HTTP/HTTPS 网页的内容脚本。请允许扩展在目标网站运行。脚本只显示入口、读取本地界面偏好，不扫描全文、不自动查词，也不调用 AI；收藏和设置面板使用扩展自己的页面，宿主网页无法读取其收藏列表或密钥。浏览器内部页面、商店、内置文档阅读器仍可能限制显示。
+
+**从旧版更新**：先导出备份，在原先加载的扩展目录内替换为新版 `extension` 文件夹里的文件，然后到 `edge://extensions` 点重新加载，并刷新已有网页。若此前加载的是解压目录中的旧版副本，请更新那一份目录。无需卸载扩展；保留原目录可避免产生另一个扩展实例。
+
 ## 安装（Windows / Microsoft Edge）
 
 无需安装 Node.js、Python 或其他开发工具。
@@ -59,13 +72,13 @@
 
 - [逐项验收报告](docs/验收报告.md)
 - [第三方来源与许可](THIRD_PARTY_NOTICES.md)
-- `artifacts/manager.png`、`artifacts/lookup.png`、`artifacts/settings.png`：实际 Edge 页面截图。
+- `artifacts/manager.png`、`artifacts/lookup.png`、`artifacts/settings.png`、`artifacts/widget-favorites.png`、`artifacts/widget-settings.png`：实际 Edge 页面截图。
 - `artifacts/browser-results.json`：自动化浏览器检查记录。
 
 开发验证：`npm test`（核心与协议测试）、`npm run check`（语法、文件、词库完整性）、`npm run test:browser`（独立测试浏览器）。浏览器脚本使用环境中的 Playwright，可通过 `PLAYWRIGHT_PATH` 指向自己的安装路径。它只使用测试配置目录，并在测试副本中预授予本机测试站点权限；真实可选权限提示和物理快捷键仍需人工确认。
 
 ## 模块结构
 
-`extension/manifest.json` 为可直接加载的 MV3 入口，无构建步骤。`content.js` 负责选区和卡片；`background.js` 验证消息、协调词典与数据；`lib/core.js` 负责数据与归并；`lib/storage.js` 使用 IndexedDB 事务存储；`lib/dictionary.js` 按首字母加载本地词典；`lib/providers.js` 提供独立服务商适配；`manager.*` 为中文管理页。
+`extension/manifest.json` 为可直接加载的 MV3 入口，无构建步骤。`content.js` 负责选区、查词卡片、圆形图标和拖动；`widget.*` 为扩展域内的浮框收藏与设置页；`background.js` 验证消息、协调词典与数据；`lib/preferences.js` 校验界面偏好；`lib/core.js` 负责数据与归并；`lib/storage.js` 使用 IndexedDB 事务存储；`lib/dictionary.js` 按首字母加载本地词典；`lib/providers.js` 提供独立服务商适配；`manager.*` 为中文管理页。
 
 当前词典包含 **37,019 词条**，词库约 **2.6 MiB**，来自 ECDICT 已固定提交的常用词子集。筛选条件和原始 CSV 校验摘要见 `extension/data/metadata.json`。若需重新构建词库，运行 `python tools/build_dictionary.py`；此开发步骤需要网络，扩展运行不需要下载词典。

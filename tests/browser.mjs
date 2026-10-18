@@ -60,10 +60,51 @@ try{
   assert.deepEqual(await send({type:'EXPLAIN',text:'run',context:'I run.'}),{needsSettings:true});
   record('Unconfigured AI asks for settings without sending a model request');
   const article=await context.newPage();await article.goto(`http://127.0.0.1:${server.address().port}`);
+  article.on('pageerror',e=>errors.push(e.message));
+  const bubble=article.locator('#shici-widget-host button');
+  await bubble.waitFor();assert.equal(await bubble.getAttribute('aria-expanded'),'false');
+  assert.equal(await article.locator('#shici-widget-host iframe').count(),0);
+  assert.equal((await send({type:'STATE'})).history.length,3);assert.equal(apiRequests.length,0);
+  record('Ordinary webpages show only a circular launcher; no automatic lookup or API call');
+  const original=await bubble.boundingBox();
+  await article.mouse.move(original.x+original.width/2,original.y+original.height/2);await article.mouse.down();await article.mouse.move(760,340,{steps:12});await article.mouse.up();
+  assert.equal(await article.locator('#shici-widget-host iframe').count(),0);
+  async function until(check,predicate){for(let i=0;i<30;i++){const value=await check();if(predicate(value))return value;await new Promise(resolve=>setTimeout(resolve,50));}throw new Error('State did not settle');}
+  const position=await until(()=>send({type:'GET_UI_PREFERENCES'}),value=>value.x<0.9&&value.y<0.5);
+  const movedPosition=await bubble.boundingBox();
+  assert.ok(Math.abs(movedPosition.x-(760-24))<3,JSON.stringify({original,movedPosition}));assert.ok(Math.abs(movedPosition.y-(340-24))<3);
+  await article.reload();await bubble.waitFor();const restoredPosition=await bubble.boundingBox();assert.ok(Math.abs(restoredPosition.x-movedPosition.x)<3,JSON.stringify({original,movedPosition,restoredPosition,position}));assert.ok(Math.abs(restoredPosition.y-movedPosition.y)<3);
+  record('Dragging moves the circular icon without opening the panel and remembers position after reload');
+  await bubble.click();const widget=article.frameLocator('#shici-widget-host iframe');
+  await widget.getByText('run',{exact:true}).waitFor();
+  await widget.getByRole('searchbox',{name:'搜索收藏单词'}).fill('自己编辑');await widget.getByText('跑；我自己编辑的释义',{exact:true}).waitFor();
+  await widget.getByRole('searchbox',{name:'搜索收藏单词'}).fill('not-in-book');await widget.getByText('没有匹配的收藏',{exact:true}).waitFor();
+  await widget.getByRole('searchbox',{name:'搜索收藏单词'}).fill('running');await widget.getByText('run',{exact:true}).waitFor();
+  const isolated=await article.locator('#shici-widget-host iframe').evaluate(n=>{try{return n.contentWindow.document.body.innerText;}catch(e){return e.name;}});assert.equal(isolated,'SecurityError');
+  const iconBox=await bubble.boundingBox(),panelBox=await article.locator('#shici-widget-host iframe').boundingBox();assert.ok(panelBox.x+panelBox.width<=iconBox.x||iconBox.x+iconBox.width<=panelBox.x||panelBox.y+panelBox.height<=iconBox.y||iconBox.y+iconBox.height<=panelBox.y,'Expanded panel must not cover its circular launcher');
+  await article.screenshot({path:path.join(root,'artifacts','widget-favorites.png')});
+  record('Floating panel searches English and Chinese favorites inside an extension-origin iframe inaccessible to the host page');
+  await widget.getByRole('button',{name:'设置',exact:true}).click();await widget.locator('#shortcut').getByText('Alt+Shift+D',{exact:true}).waitFor();
+  await widget.locator('#size').selectOption('56');await until(()=>bubble.boundingBox(),box=>Math.abs(box.width-56)<1);
+  await widget.locator('#opacity').evaluate(n=>{n.value='65';n.dispatchEvent(new Event('change',{bubbles:true}));});await until(()=>send({type:'GET_UI_PREFERENCES'}),p=>p.opacity===0.65);
+  await widget.locator('body').evaluate(()=>window.scrollTo(0,0));
+  await article.screenshot({path:path.join(root,'artifacts','widget-settings.png')});
+  const shortcutPagePromise=context.waitForEvent('page');await widget.getByRole('button',{name:'修改快捷键 ↗'}).click();const shortcutPage=await shortcutPagePromise;await shortcutPage.waitForLoadState();assert.match(shortcutPage.url(),/^(edge|chrome):\/\/extensions\/shortcuts/);await shortcutPage.close();
+  record('Floating settings change icon size and opacity; shortcut button opens the real browser editor');
+  await widget.getByRole('button',{name:'收起拾词浮框'}).click();await article.locator('#shici-widget-host iframe').waitFor({state:'detached'});
+  await bubble.click();await article.frameLocator('#shici-widget-host iframe').getByRole('button',{name:'收起拾词浮框'}).waitFor();await article.locator('#sentence').click();await article.locator('#shici-widget-host iframe').waitFor({state:'detached'});
+  await bubble.click();await article.frameLocator('#shici-widget-host iframe').getByRole('button',{name:'收起拾词浮框'}).focus();await article.keyboard.press('Escape');await article.locator('#shici-widget-host iframe').waitFor({state:'detached'});
+  await bubble.click();
+  await article.frameLocator('#shici-widget-host iframe').getByRole('button',{name:'设置',exact:true}).click();await article.frameLocator('#shici-widget-host iframe').getByRole('button',{name:'隐藏网页图标'}).click();
+  await article.locator('#shici-widget-host').waitFor({state:'detached'});
+  await send({type:'SET_UI_PREFERENCES',patch:{visible:true}});await bubble.waitFor();
+  await article.reload();await bubble.waitFor();assert.equal(Math.round((await bubble.boundingBox()).width),56);
+  await send({type:'SET_UI_PREFERENCES',patch:{x:1,y:0.8,size:48,opacity:0.9}});
+  record('Panel closes to the circle; hidden icons can be restored from manager settings; preferences persist');
   await article.locator('#sentence').evaluate(n=>{const range=document.createRange();range.setStart(n.firstChild,8);range.setEnd(n.firstChild,15);getSelection().removeAllRanges();getSelection().addRange(range);});
   assert.equal(await article.locator('#shici-lookup-host').count(),0);
   // Exercise the same injection/message path as the commands handler; OS key binding is a separate manual check.
-  // Grant activeTab through the command in an isolated test browser by a CDP user gesture + optional localhost permission.
+  // Localhost host grant is test-only; physical command activation remains a separate manual check.
   const permission=await page.evaluate(async()=>chrome.permissions.contains({origins:['http://127.0.0.1/*']}));
   assert.ok(permission);
   const tabId=await worker.evaluate(async url=>(await chrome.tabs.query({})).find(t=>t.url===url).id,article.url());
@@ -97,6 +138,10 @@ try{
   await page.locator('#provider').selectOption('custom');await page.locator('#base-url').fill(settings.baseUrl);await page.locator('#model').fill(settings.model);await page.locator('#api-key').fill('private-test-key');await page.locator('#ai-enabled').check();
   await page.getByRole('button',{name:'保存配置',exact:true}).click();await page.getByText('已保存。尚未测试连接，保存本身不会调用 API。',{exact:true}).waitFor();
   assert.equal(apiRequests.length,0);assert.equal(await page.locator('#api-key').inputValue(),'');
+  await bubble.click();const liveWidget=article.frameLocator('#shici-widget-host iframe');await liveWidget.getByRole('button',{name:'设置',exact:true}).click();
+  await liveWidget.locator('#ai-enabled').uncheck();await until(()=>send({type:'GET_SETTINGS'}),s=>s.ai.enabled===false);assert.deepEqual(await send({type:'EXPLAIN',text:'run'}),{needsSettings:true});
+  await liveWidget.locator('#ai-enabled').check();await until(()=>send({type:'GET_SETTINGS'}),s=>s.ai.enabled===true);assert.equal(apiRequests.length,0);
+  await liveWidget.getByRole('button',{name:'收起拾词浮框'}).click();await article.locator('#shici-widget-host iframe').waitFor({state:'detached'});
   const explanation=await send({type:'EXPLAIN',text:'run',context:'I run.'});assert.match(explanation.text,/本句词义/);assert.equal(apiRequests.length,1);assert.equal(apiRequests[0].authorization,'Bearer private-test-key');
   const cached=await send({type:'EXPLAIN',text:'run',context:'I run.'});assert.ok(cached.cached);assert.equal(apiRequests.length,1);
   const backupWithKey=await send({type:'EXPORT'});assert.ok(!JSON.stringify(backupWithKey).includes('private-test-key'));
@@ -113,14 +158,17 @@ try{
   await send({type:'DELETE_KEY'});assert.equal((await send({type:'GET_SETTINGS'})).hasKey,false);assert.deepEqual(await send({type:'EXPLAIN',text:'run'}),{needsSettings:true});
   const rejected=await worker.evaluate(async id=>(await chrome.scripting.executeScript({target:{tabId:id},func:()=>chrome.runtime.sendMessage({type:'GET_SETTINGS'})}))[0].result,tabId);
   assert.equal(rejected.ok,false);assert.match(rejected.error,/来源/);
+  for(const type of ['WIDGET_DATA','SET_UI_PREFERENCES','SET_AI_ENABLED']){const result=await worker.evaluate(async({id,type})=>(await chrome.scripting.executeScript({target:{tabId:id},func:kind=>chrome.runtime.sendMessage({type:kind,patch:{visible:false},enabled:true}),args:[type]}))[0].result,{id:tabId,type});assert.equal(result.ok,false);}
   record('Settings save makes no API call; local HTTP explanation, caching, real test request, 429 handling and key deletion verified');
   record('Credentials absent from backups and settings responses; offline lookup survives API failure');
+  await send({type:'SET_UI_PREFERENCES',patch:{x:0.25,y:0.35,size:40,opacity:0.8}});
   await context.close();context=null;
   context=await chromium.launchPersistentContext(profile,{channel:'msedge',headless:true,args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`]});
   const reopened=await context.newPage();await reopened.goto(`chrome-extension://${id}/manager.html`);
   await reopened.locator('#record-list .record').first().waitFor();
   const restored=await reopened.evaluate(async()=>(await chrome.runtime.sendMessage({type:'STATE'})).data);
   assert.equal(restored.vocabulary[0].preferredMeaning,'跑；我自己编辑的释义');
+  const prefs=await reopened.evaluate(async()=>(await chrome.runtime.sendMessage({type:'GET_UI_PREFERENCES'})).data);assert.equal(prefs.x,0.25);assert.equal(prefs.size,40);assert.equal(prefs.opacity,0.8);
   record('Favorites persist across complete browser shutdown and restart');
 }finally{
   await context?.close();server.close();
