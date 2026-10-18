@@ -1,0 +1,6 @@
+artifacts/edge-test-profile*/
+artifacts/backup-roundtrip.json
+__pycache__/
+node_modules/
+*.log
+*.zip

@@ -1,0 +1,13 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {execFileSync} from 'node:child_process';
+const root=process.cwd(), dir=path.join(root,'extension');
+const manifest=JSON.parse(await fs.readFile(path.join(dir,'manifest.json'),'utf8'));
+for(const file of ['background.js','manager.js','content.js',...['core','storage','dictionary','providers'].map(x=>`lib/${x}.js`)])execFileSync(process.execPath,['--check',path.join(dir,file)]);
+for(const file of [manifest.background.service_worker,manifest.options_page,'manager.css','manager.js','data/metadata.json','data/ECDICT-LICENSE.txt'])await fs.access(path.join(dir,file));
+const metadata=JSON.parse(await fs.readFile(path.join(dir,'data/metadata.json'),'utf8'));
+let count=0;
+for(const shard of metadata.shards)count+=Object.keys(JSON.parse(await fs.readFile(path.join(dir,`data/${shard}.json`),'utf8'))).length;
+if(count!==metadata.entries || count<30000)throw new Error('Dictionary count mismatch');
+if(manifest.host_permissions || manifest.content_scripts)throw new Error('Unexpected automatic page access');
+console.log(`Syntax, manifest files and ${count} dictionary records checked.`);

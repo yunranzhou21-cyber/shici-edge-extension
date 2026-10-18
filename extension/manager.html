@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>拾词 · 单词本</title><link rel="stylesheet" href="manager.css"></head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="#vocabulary"><span class="mark">拾</span><span>拾词<small>在阅读中，留下理解</small></span></a>
+    <nav aria-label="管理页面"><button data-tab="vocabulary" class="selected">收藏 <span id="vocabulary-count">0</span></button><button data-tab="history">查询历史 <span id="history-count">0</span></button><button data-tab="settings">设置</button></nav>
+    <div class="sidebar-note"><span class="dot"></span> 本地优先<br><small>主动查询，手动收藏。<br>没有打卡，也没有复习任务。</small></div>
+  </aside>
+  <main>
+    <header class="page-header"><div><p class="eyebrow">YOUR READING COMPANION</p><h1 id="page-title">收藏</h1><p id="page-subtitle">留下值得再看一次的词与语境。</p></div><button id="manual-toggle" class="primary">＋ 手动查词</button></header>
+    <div id="notice" class="notice" role="status" hidden></div>
+    <section id="manual" class="panel" hidden>
+      <h2>查一个词</h2><p class="muted">网页受限、文档阅读器或字幕不可选时，也可以在这里输入。</p>
+      <form id="lookup-form"><div class="inline"><input id="lookup-word" aria-label="英文单词或短语" maxlength="200" placeholder="英文单词或短语，例如 running" required><button class="primary">查询</button></div><textarea id="lookup-context" aria-label="局部原句" maxlength="1000" placeholder="局部原句（可选）；只在主动解释时发送给所选 AI 服务"></textarea></form>
+      <div id="lookup-result" aria-live="polite"></div>
+    </section>
+    <section id="records-view">
+      <div class="toolbar"><input type="search" id="search" aria-label="搜索单词、中文释义或来源" placeholder="搜索英文、中文释义、原句或来源…"><button id="clear-history" class="danger" hidden>清空历史</button></div>
+      <div id="record-list" class="record-list"></div>
+    </section>
+    <section id="settings-view" hidden>
+      <div class="panel"><h2>快捷键与页面支持</h2><p>在普通网页选中英文后按 <kbd id="shortcut">Alt + Shift + D</kbd>。仅在触发时读取选区和附近文字，不读取剪贴板或输入框。</p><button id="shortcuts">修改浏览器快捷键</button><p class="muted">快捷键若被其他扩展占用，请自行重新绑定。内置 PDF、Office/PPT、浏览器内部页、商店页面及嵌入框架可能无法取词，请使用手动查词。YouTube 字幕面板适配尚未交付；可选中的网页文字仍可查询，主动查词会暂停视频，之后需手动播放。</p></div>
+      <div class="panel"><h2>本地词典</h2><p id="dictionary-info">正在读取词典信息…</p><p class="muted">一般释义不代表当前语境的唯一含义；常见可靠词形合并，歧义词保持独立。未命中时可手动填写释义或主动请求 AI。</p><label>联网翻译备用<select disabled><option>未启用 · 微软翻译适配计划后续提供</option></select></label><p class="muted">普通查词始终使用离线词典，不会自动请求 AI 或切换到付费服务。</p></div>
+      <form id="ai-form" class="panel">
+        <h2>AI 解释原句 <span class="tag">可选</span></h2>
+        <p class="muted">只有点击“解释原句”时，才发送目标词与最多 1,000 字符的局部原句。连接测试也会发送一次真实请求，可能消耗额度。请先在服务商处核实当前模型与价格。</p>
+        <label class="checkbox"><input type="checkbox" id="ai-enabled"> 启用主动 AI 解释</label>
+        <div class="form-grid"><label>服务商<select id="provider"><option value="gemini">Gemini</option><option value="deepseek">DeepSeek</option><option value="openrouter">OpenRouter</option><option value="custom">自定义（OpenAI-compatible）</option></select></label><label>模型名称<input id="model" required maxlength="150" placeholder="填写该服务商当前支持的模型"></label></div>
+        <label>API 基础地址<input id="base-url" type="url" required placeholder="https://…（不含 /chat/completions）"></label>
+        <label>API Key <span id="key-status" class="muted"></span><input id="api-key" type="password" autocomplete="off" maxlength="2000" placeholder="填写密钥；保存后不会回填"></label>
+        <p class="muted">密钥仅保存在本机扩展存储，不同步、不导出；本地存储并非硬件安全保险箱。更换服务商或 API 域名需要重新填写密钥。保存时浏览器会按需请求该站点访问权限。</p>
+        <div class="inline"><button class="primary">保存配置</button><button type="button" id="test-connection">测试已保存配置（可能计费）</button><button type="button" id="delete-key" class="danger">删除密钥</button></div><p id="ai-feedback" role="status"></p>
+      </form>
+      <div class="panel"><h2>数据与备份</h2><p>收藏与历史保存在本机，关闭浏览器后保留。卸载扩展、清除扩展数据或更换浏览器配置可能导致丢失，请定期导出。</p><div class="inline"><button id="export">导出 JSON 备份</button><label class="file-button">导入 JSON 备份<input id="import" type="file" accept="application/json,.json"></label></div><p class="muted">备份含版本号、收藏和历史，不含 API Key 或设置。导入合并重复记录，保留已有首选释义；无效文件不会修改原数据。</p></div>
+      <div class="panel"><h2>来源与许可</h2><p>词典：<a href="https://github.com/skywind3000/ECDICT" target="_blank" rel="noreferrer">ECDICT</a> 常用词子集，MIT 许可。<a href="data/ECDICT-LICENSE.txt" target="_blank">查看原始许可</a>。</p><p class="muted">API 协议参考：<a href="https://ai.google.dev/api/generate-content" target="_blank" rel="noreferrer">Gemini</a> · <a href="https://api-docs.deepseek.com/api/create-chat-completion" target="_blank" rel="noreferrer">DeepSeek</a> · <a href="https://openrouter.ai/docs/api/api-reference/chat/send-chat-completion-request" target="_blank" rel="noreferrer">OpenRouter</a>。实际可用性受密钥、模型、网络与额度影响。</p><p class="muted">拾词 v0.1.0 · 阶段 A · 无账户，无云端服务器</p></div>
+    </section>
+  </main>
+  <dialog id="editor"><form method="dialog"><h2 id="editor-title">编辑释义</h2><textarea id="editor-meaning" maxlength="4000" required aria-label="中文释义"></textarea><div class="inline"><button value="cancel" formnovalidate>取消</button><button value="save" class="primary">保存</button></div></form></dialog>
+  <dialog id="confirm"><form method="dialog"><h2>确认操作</h2><p id="confirm-message"></p><div class="inline"><button value="cancel">取消</button><button value="confirm" class="danger">确认</button></div></form></dialog>
+  <script type="module" src="manager.js"></script>
+</body></html>

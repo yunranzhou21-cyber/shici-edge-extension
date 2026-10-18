@@ -1,0 +1,21 @@
+{
+  "testedAt": "2026-10-18T16:57:08.323Z",
+  "browser": "Microsoft Edge headless",
+  "checks": [
+    "Unpacked extension loaded in Microsoft Edge",
+    "Chinese manager loads with genuinely empty state",
+    "Manual offline lookup and edited favorite save",
+    "Running resolves saved run without overwriting edited meaning; saw stays independent",
+    "English and Chinese search work after reload",
+    "JSON roundtrip, deduplication, invalid-import atomicity and independent history clearing",
+    "Unconfigured AI asks for settings without sending a model request",
+    "No translation on selection; explicit injection opens card; Escape closes it",
+    "Empty selection shows guidance without recording history",
+    "Sensitive textarea selection is not queried or recorded",
+    "Settings show offline coverage and honest provider/document limitations",
+    "Actual JSON download and file-picker import roundtrip preserve favorites without credentials",
+    "Settings save makes no API call; local HTTP explanation, caching, real test request, 429 handling and key deletion verified",
+    "Credentials absent from backups and settings responses; offline lookup survives API failure",
+    "Favorites persist across complete browser shutdown and restart"
+  ]
+}
