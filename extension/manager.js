@@ -1,5 +1,6 @@
 import { searchEntries, canonicalize, safeUrl } from './lib/core.js';
 import { PROVIDERS, hostPattern, validateSettings } from './lib/providers.js';
+import { microsoftSettings } from './lib/microsoft.js';
 const $=id=>document.getElementById(id);
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text)n.textContent=text;if(cls)n.className=cls;return n;};
 async function send(message){const r=await chrome.runtime.sendMessage(message);if(!r?.ok)throw new Error(r?.error||'扩展连接失败');return r.data;}
@@ -48,7 +49,7 @@ function renderRecords(){
 }
 function showTab(value){tab=['vocabulary','history','settings'].includes(value)?value:'vocabulary';document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('selected',b.dataset.tab===tab));$('page-title').textContent={vocabulary:'收藏',history:'查询历史',settings:'设置'}[tab];$('page-subtitle').textContent={vocabulary:'留下值得再看一次的词与语境。',history:'查询是一段经过，收藏由你决定。',settings:'让工具适合你的阅读方式。'}[tab];$('settings-view').hidden=tab!=='settings';$('records-view').hidden=tab==='settings';$('clear-history').hidden=tab!=='history';renderRecords();}
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{location.hash=b.dataset.tab;});
-function readHash(){if(location.hash==='#unsupported'){showTab('vocabulary');$('manual').hidden=false;notice('当前页面无法读取选区（如内置 PDF、浏览器内部页或受限阅读器）。请在这里手动输入英文。');}else showTab(location.hash.slice(1));}
+function readHash(){if(location.hash==='#unsupported'){showTab('vocabulary');$('manual').hidden=false;notice('当前页面无法读取选区（如内置 PDF、浏览器内部页或受限阅读器）。请在这里手动输入英文。');}else if(location.hash==='#microsoft'){showTab('settings');$('microsoft-form').scrollIntoView();}else showTab(location.hash.slice(1));}
 window.addEventListener('hashchange',readHash);
 $('search').oninput=renderRecords;
 $('manual-toggle').onclick=()=>{$('manual').hidden=!$('manual').hidden;if(!$('manual').hidden)$('lookup-word').focus();};
@@ -59,16 +60,22 @@ $('lookup-form').onsubmit=async event=>{
 function renderLookup(){
   const area=$('lookup-result');area.replaceChildren();area.append(el('h2',lookup.originalText));
   const status=el('p',lookup.saved?'已收藏':'未收藏');area.append(status);
-  area.append(el('p',lookup.status==='success'?'本地词典 · 一般释义':lookup.error||'本地词典未命中，可手动填写释义收藏。','muted'));
+  area.append(el('p',lookup.status==='success'?(lookup.provider==='microsoft'?`微软翻译 · 英文 → 简体中文${lookup.cached?'（缓存）':''}`:'本地词典 · 一般释义'):lookup.error||'本地词典未命中，可手动填写释义收藏。','muted'));
+  if(lookup.warning)area.append(el('p',lookup.warning,'lookup-warning'));
   const meaning=el('textarea');meaning.value=lookup.meaning||'';meaning.maxLength=4000;meaning.setAttribute('aria-label','本次中文释义');area.append(meaning);
   const actions=el('div',null,'inline');area.append(actions);
   const save=action(actions,lookup.saved?'追加本次原句 / 释义':'收藏',async()=>{lookup.saved=await send({type:'FAVORITE',item:{...lookup,meaning:meaning.value,context:$('lookup-context').value},append:!!lookup.saved});status.textContent='已收藏';save.textContent='追加本次原句 / 释义';await refresh();},'primary');
   if(lookup.saved){const old=el('details');old.append(el('summary','查看已有记录'));old.append(el('p',lookup.saved.preferredMeaning));for(const o of lookup.saved.occurrences)old.append(el('p',`${o.originalText} · ${o.meaning}\n${o.context||''}`));area.append(old);}
   const output=el('p');output.setAttribute('role','status');area.append(output);
+  action(actions,'微软联网查词',async()=>{output.textContent='正在请求微软翻译…';const result=await send({type:'LOOKUP',text:lookup.originalText,context:$('lookup-context').value,source:lookup.source,online:true});if(result.needsMicrosoftSettings){output.textContent=result.warning;location.hash='microsoft';return;}lookup=result;renderLookup();await refresh();});
   action(actions,'解释原句',async()=>{output.textContent='解释中…';try{const result=await send({type:'EXPLAIN',text:lookup.originalText,context:$('lookup-context').value});if(result.needsSettings){output.textContent='尚未配置或启用 AI，本次未调用模型。';location.hash='settings';$('ai-form').scrollIntoView({behavior:'smooth'});}else output.textContent=(result.cached?'缓存结果 · ':'')+result.text;}catch(e){output.textContent=e.message;}});
 }
 $('clear-history').onclick=async()=>{try{if(await confirmAction('清空全部查询历史？收藏和原语境记录会保留。')){await send({type:'CLEAR_HISTORY'});await refresh();}}catch(e){notice(e.message,true);}};
 $('shortcuts').onclick=()=>send({type:'OPEN_SHORTCUTS'}).catch(e=>notice(e.message,true));
+async function loadMicrosoftSettings(){const value=await send({type:'GET_MICROSOFT_SETTINGS'});$('microsoft-enabled').checked=value.settings.enabled;$('microsoft-endpoint').value=value.settings.endpoint;$('microsoft-region').value=value.settings.region;$('microsoft-key-status').textContent=value.hasKey?'（已保存，不回填）':'（未保存）';}
+$('microsoft-form').onsubmit=async event=>{event.preventDefault();try{const settings=microsoftSettings({enabled:$('microsoft-enabled').checked,endpoint:$('microsoft-endpoint').value,region:$('microsoft-region').value});const allowed=await chrome.permissions.request({origins:[hostPattern(settings.endpoint)]});if(!allowed)throw new Error('未授予微软 API 站点权限，配置未保存');await send({type:'SAVE_MICROSOFT_SETTINGS',settings,key:$('microsoft-key').value});$('microsoft-key').value='';await loadMicrosoftSettings();$('microsoft-feedback').textContent='微软配置已保存，尚未测试连接；保存本身没有调用接口。';}catch(e){$('microsoft-feedback').textContent=e.message;}};
+$('test-microsoft').onclick=async()=>{if(!await confirmAction('将使用已保存的微软配置翻译 hello，可能计入 Azure 字符额度。继续？'))return;const b=$('test-microsoft');b.disabled=true;$('microsoft-feedback').textContent='正在请求微软服务…';try{const result=await send({type:'TEST_MICROSOFT'});$('microsoft-feedback').textContent='微软服务返回有效译文，连接成功：'+result.meaning;}catch(e){$('microsoft-feedback').textContent=e.message;}finally{b.disabled=false;}};
+$('delete-microsoft-key').onclick=async()=>{try{await send({type:'DELETE_MICROSOFT_KEY'});$('microsoft-key').value='';await loadMicrosoftSettings();$('microsoft-feedback').textContent='微软密钥已删除，联网备用已关闭。';}catch(e){$('microsoft-feedback').textContent=e.message;}};
 async function loadWidgetSettings(){const value=await send({type:'GET_UI_PREFERENCES'});$('widget-visible').checked=value.visible;$('widget-size').value=value.size;const opacity=$('widget-opacity');const custom=opacity.querySelector('[data-custom]');custom?.remove();if(![...opacity.options].some(o=>Number(o.value)===value.opacity)){const option=el('option',Math.round(value.opacity*100)+'%');option.value=value.opacity;option.dataset.custom='true';opacity.append(option);}opacity.value=value.opacity;}
 $('widget-form').onsubmit=async event=>{event.preventDefault();try{await send({type:'SET_UI_PREFERENCES',patch:{visible:$('widget-visible').checked,size:Number($('widget-size').value),opacity:Number($('widget-opacity').value)}});$('widget-feedback').textContent='已保存，已打开的网页也会更新。';}catch(e){$('widget-feedback').textContent=e.message;}};
 $('widget-reset-position').onclick=async()=>{try{await send({type:'SET_UI_PREFERENCES',patch:{x:1,y:0.8}});$('widget-feedback').textContent='图标已重置到右侧。';}catch(e){$('widget-feedback').textContent=e.message;}};
@@ -92,11 +99,11 @@ $('test-connection').onclick=async()=>{
 $('delete-key').onclick=async()=>{try{await send({type:'DELETE_KEY'});$('api-key').value='';await loadSettings();$('ai-feedback').textContent='密钥已删除。';}catch(e){notice(e.message,true);}};
 $('export').onclick=async()=>{try{const backup=await send({type:'EXPORT'});const url=URL.createObjectURL(new Blob([JSON.stringify(backup,null,2)],{type:'application/json'}));const a=el('a');a.href=url;a.download=`拾词备份-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);notice('已生成备份文件，不包含 API Key。');}catch(e){notice(e.message,true);}};
 $('import').onchange=async()=>{const file=$('import').files[0];if(!file)return;try{const backup=JSON.parse(await file.text());const r=await send({type:'IMPORT',backup});await refresh();notice(`导入完成：处理 ${r.vocabulary} 条收藏、${r.history} 条历史；重复记录已合并。`);}catch(e){notice(`导入失败：${e.message}。原有数据未修改。`,true);}finally{$('import').value='';}};
-chrome.storage.onChanged.addListener(changes=>{if(changes.ai||changes.apiKey)loadSettings().catch(()=>{});if(changes.uiPreferences)loadWidgetSettings().catch(()=>{});});
+chrome.storage.onChanged.addListener(changes=>{if(changes.ai||changes.apiKey)loadSettings().catch(()=>{});if(changes.microsoft||changes.microsoftKey)loadMicrosoftSettings().catch(()=>{});if(changes.uiPreferences)loadWidgetSettings().catch(()=>{});});
 async function refreshShortcut(){const commands=await chrome.commands.getAll();const shortcut=commands.find(c=>c.name==='lookup-selection')?.shortcut;$('shortcut').textContent=shortcut||'未绑定：请设置快捷键';return shortcut;}
 window.addEventListener('focus',()=>Promise.all([refresh(),refreshShortcut(),loadWidgetSettings()]).catch(e=>notice(e.message,true)));
 try{
-  await Promise.all([refresh(),loadSettings(),loadWidgetSettings()]);
+  await Promise.all([refresh(),loadSettings(),loadWidgetSettings(),loadMicrosoftSettings()]);
   const metadata=await fetch('data/metadata.json').then(r=>r.json());$('dictionary-info').textContent=`ECDICT 常用词子集 · ${metadata.entries.toLocaleString('zh-CN')} 词条 · 完全离线，无调用费。`;
   const shortcut=await refreshShortcut();
   if(!shortcut)notice('查词快捷键未绑定或发生冲突，请到设置修改。');

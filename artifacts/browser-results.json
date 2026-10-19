@@ -1,5 +1,5 @@
 {
-  "testedAt": "2026-10-18T17:34:44.618Z",
+  "testedAt": "2026-10-19T08:01:06.942Z",
   "browser": "Microsoft Edge headless",
   "checks": [
     "Unpacked extension loaded in Microsoft Edge",
@@ -21,6 +21,9 @@
     "Actual JSON download and file-picker import roundtrip preserve favorites without credentials",
     "Settings save makes no API call; local HTTP explanation, caching, real test request, 429 handling and key deletion verified",
     "Credentials absent from backups and settings responses; offline lookup survives API failure",
+    "Microsoft settings save sends no request; local-first fallback, explicit online lookup, minimal payload and real connection-test request verified",
+    "Microsoft key stays outside page responses and backups; content scripts cannot access or change its settings",
+    "Microsoft 429 preserves local results and favorites; deleting key disables online calls and clears cache",
     "Favorites persist across complete browser shutdown and restart"
   ]
 }

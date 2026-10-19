@@ -26,6 +26,7 @@ async function load(more=false){
 async function save(patch){data.preferences=await send({type:'SET_UI_PREFERENCES',patch});renderSettings();feedback('已保存');}
 act('close',close);act('favorites-tab',async()=>{showSettings(false);await load();});act('settings-tab',async()=>{showSettings(true);await load();});
 act('more',()=>load(true));act('open-book',()=>send({type:'OPEN_VOCABULARY'}));act('open-settings',()=>send({type:'OPEN_SETTINGS'}));act('shortcuts',()=>send({type:'OPEN_SHORTCUTS'}));
+act('open-microsoft',()=>send({type:'OPEN_MICROSOFT_SETTINGS'}));
 act('reset-position',()=>save({x:1,y:0.8}));
 act('hide-widget',async()=>{await save({visible:false});});
 $('search').oninput=()=>{clearTimeout(queryTimer);queryTimer=setTimeout(()=>load().catch(e=>feedback(e.message,true)),120);};

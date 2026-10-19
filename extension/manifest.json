@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "拾词 · 主动查词与记录",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "主动选词查中文释义，本地保存收藏与历史。",
   "permissions": ["activeTab", "scripting", "storage"],
   "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],

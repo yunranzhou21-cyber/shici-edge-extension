@@ -17,5 +17,7 @@
 - DeepSeek Chat Completions：https://api-docs.deepseek.com/api/create-chat-completion
 - OpenRouter Chat Completions：https://openrouter.ai/docs/api/api-reference/chat/send-chat-completion-request
 - 浏览器 Commands API：https://developer.chrome.com/docs/extensions/reference/api/commands
+- 微软 Translator v3 Translate：https://learn.microsoft.com/en-us/azure/ai-services/translator/text-translation/reference/v3/translate
+- 微软认证与区域：https://learn.microsoft.com/en-us/azure/ai-services/translator/text-translation/reference/authentication
 
 参考官方协议编写独立适配，不包含服务商 SDK 或共享密钥；未硬编码当前模型与价格。

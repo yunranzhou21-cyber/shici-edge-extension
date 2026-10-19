@@ -3,7 +3,7 @@ import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 const root=process.cwd(), dir=path.join(root,'extension');
 const manifest=JSON.parse(await fs.readFile(path.join(dir,'manifest.json'),'utf8'));
-for(const file of ['background.js','manager.js','widget.js','content.js',...['core','storage','dictionary','providers','preferences'].map(x=>`lib/${x}.js`)])execFileSync(process.execPath,['--check',path.join(dir,file)]);
+for(const file of ['background.js','manager.js','widget.js','content.js',...['core','storage','dictionary','providers','preferences','microsoft','lookup'].map(x=>`lib/${x}.js`)])execFileSync(process.execPath,['--check',path.join(dir,file)]);
 for(const file of [manifest.background.service_worker,manifest.options_page,'manager.css','manager.js','widget.html','widget.css','widget.js','data/metadata.json','data/ECDICT-LICENSE.txt'])await fs.access(path.join(dir,file));
 const metadata=JSON.parse(await fs.readFile(path.join(dir,'data/metadata.json'),'utf8'));
 let count=0;

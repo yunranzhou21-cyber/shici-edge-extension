@@ -119,8 +119,9 @@
     card.append(el('h2',result.originalText));
     if(result.phonetic)card.append(el('small',`/${result.phonetic}/ · ${result.canonicalForm}`));
     const status=el('p',result.saved?'已收藏':'未收藏','status');card.append(status);
-    const message=result.status==='success'?'本地词典 · 一般释义':result.error||'本地词典未命中。可填写中文释义后收藏，或在设置启用 AI 后主动解释。';
+    const message=result.status==='success'?(result.provider==='microsoft'?`微软翻译 · 英文 → 简体中文${result.cached?'（缓存）':''}`:'本地词典 · 一般释义'):result.error||'本地词典未命中。可填写释义收藏、配置微软联网查词，或主动请求 AI。';
     card.append(el('small',message));
+    if(result.warning)card.append(el('p',result.warning,'error'));
     const label=el('label','中文释义（收藏前可修改）');const meaning=el('textarea');meaning.value=result.meaning||'';meaning.maxLength=4000;label.append(meaning);card.append(label);
     const contextLabel=el('label','局部原句（可补充）');const context=el('textarea');context.value=result.context||'';context.maxLength=1000;contextLabel.append(context);card.append(contextLabel);
     const actions=el('div',null,'row');card.append(actions);
@@ -131,6 +132,7 @@
     },actions,true);
     if(result.saved)savedDetails(card,result.saved);
     const output=el('p');output.setAttribute('aria-live','polite');card.append(output);
+    button('微软联网查词',async()=>{output.textContent='正在请求微软翻译…';const next=await send({type:'LOOKUP',text:result.originalText,context:context.value,source:result.source,online:true});if(!card.isConnected)return;if(next.needsMicrosoftSettings){output.textContent=next.warning;await send({type:'OPEN_MICROSOFT_SETTINGS'});return;}const header=card.querySelector('header');card.replaceChildren(header);renderResult(card,{...next,videoPaused:result.videoPaused});},actions);
     button('解释原句',async()=>{
       output.textContent='解释中…';
       const explanation=await send({type:'EXPLAIN',text:result.originalText,context:context.value});

@@ -13,7 +13,11 @@ const fixtureManifest=JSON.parse(await fs.readFile(path.join(extension,'manifest
 fixtureManifest.host_permissions=['http://127.0.0.1/*'];
 await fs.writeFile(path.join(extension,'manifest.json'),JSON.stringify(fixtureManifest));
 const apiRequests=[];
+const microsoftRequests=[];
 const server=http.createServer((req,res)=>{
+  if(req.url.startsWith('/ms/translate')||req.url.startsWith('/ms-fail/translate')){
+    let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{const data=JSON.parse(body);microsoftRequests.push({url:req.url,body:data,key:req.headers['ocp-apim-subscription-key'],region:req.headers['ocp-apim-subscription-region']});res.setHeader('Content-Type','application/json');if(req.url.startsWith('/ms-fail')){res.statusCode=429;res.end(JSON.stringify({error:{message:'private-microsoft-test-key'}}));}else res.end(JSON.stringify([{translations:[{to:'zh-Hans',text:data[0].Text==='run'?'微软：跑':'微软：测试译文'}]}]));});return;
+  }
   if(req.url==='/v1/chat/completions'){
     let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{const data=JSON.parse(body);apiRequests.push({data,authorization:req.headers.authorization});res.setHeader('Content-Type','application/json');if(data.model==='fail-model'){res.statusCode=429;res.end(JSON.stringify({error:'private-test-key'}));}else res.end(JSON.stringify({choices:[{message:{content:'本句词义：跑。整句翻译：我跑步。用法：run 表示跑步。'}}]}));});return;
   }
@@ -93,7 +97,7 @@ try{
   record('Floating settings change icon size and opacity; shortcut button opens the real browser editor');
   await widget.getByRole('button',{name:'收起拾词浮框'}).click();await article.locator('#shici-widget-host iframe').waitFor({state:'detached'});
   await bubble.click();await article.frameLocator('#shici-widget-host iframe').getByRole('button',{name:'收起拾词浮框'}).waitFor();await article.locator('#sentence').click();await article.locator('#shici-widget-host iframe').waitFor({state:'detached'});
-  await bubble.click();await article.frameLocator('#shici-widget-host iframe').getByRole('button',{name:'收起拾词浮框'}).focus();await article.keyboard.press('Escape');await article.locator('#shici-widget-host iframe').waitFor({state:'detached'});
+  await bubble.click();await article.frameLocator('#shici-widget-host iframe').locator('body').dispatchEvent('keydown',{key:'Escape',bubbles:true});await article.locator('#shici-widget-host iframe').waitFor({state:'detached'});
   await bubble.click();
   await article.frameLocator('#shici-widget-host iframe').getByRole('button',{name:'设置',exact:true}).click();await article.frameLocator('#shici-widget-host iframe').getByRole('button',{name:'隐藏网页图标'}).click();
   await article.locator('#shici-widget-host').waitFor({state:'detached'});
@@ -161,6 +165,28 @@ try{
   for(const type of ['WIDGET_DATA','SET_UI_PREFERENCES','SET_AI_ENABLED']){const result=await worker.evaluate(async({id,type})=>(await chrome.scripting.executeScript({target:{tabId:id},func:kind=>chrome.runtime.sendMessage({type:kind,patch:{visible:false},enabled:true}),args:[type]}))[0].result,{id:tabId,type});assert.equal(result.ok,false);}
   record('Settings save makes no API call; local HTTP explanation, caching, real test request, 429 handling and key deletion verified');
   record('Credentials absent from backups and settings responses; offline lookup survives API failure');
+  const msSettings={enabled:true,endpoint:`http://127.0.0.1:${server.address().port}/ms`,region:'eastasia'};
+  assert.equal((await send({type:'GET_MICROSOFT_SETTINGS'})).hasKey,false);
+  await page.locator('#microsoft-enabled').check();await page.locator('#microsoft-endpoint').fill(msSettings.endpoint);await page.locator('#microsoft-region').fill('eastasia');await page.locator('#microsoft-key').fill('private-microsoft-test-key');await page.getByRole('button',{name:'保存微软配置',exact:true}).click();
+  await page.getByText('微软配置已保存，尚未测试连接；保存本身没有调用接口。',{exact:true}).waitFor();assert.equal(microsoftRequests.length,0);assert.equal(await page.locator('#microsoft-key').inputValue(),'');
+  assert.equal((await send({type:'LOOKUP',text:'run'})).provider,'local');assert.equal(microsoftRequests.length,0);
+  const missing=await send({type:'LOOKUP',text:'unlisted phrase for azure fixture',context:'MUST NOT LEAVE DEVICE'});assert.equal(missing.provider,'microsoft');assert.equal(missing.meaning,'微软：测试译文');assert.equal(microsoftRequests.length,1);assert.deepEqual(microsoftRequests[0].body,[{Text:'unlisted phrase for azure fixture'}]);assert.equal(microsoftRequests[0].key,'private-microsoft-test-key');assert.equal(microsoftRequests[0].region,'eastasia');assert.ok(!JSON.stringify(microsoftRequests[0]).includes('MUST NOT LEAVE DEVICE'));
+  await page.locator('#microsoft-form').screenshot({path:path.join(root,'artifacts','microsoft-settings.png')});
+  await page.getByRole('button',{name:'＋ 手动查词'}).click();await page.locator('#lookup-word').fill('run');await page.getByRole('button',{name:'查询',exact:true}).click();await page.locator('#lookup-result h2').filter({hasText:/^run$/}).waitFor();
+  await page.locator('#lookup-result').getByRole('button',{name:'微软联网查词',exact:true}).click();await page.locator('#lookup-result').getByText('微软翻译 · 英文 → 简体中文',{exact:true}).waitFor();assert.equal(await page.getByRole('textbox',{name:'本次中文释义'}).inputValue(),'微软：跑');
+  await page.locator('#manual').screenshot({path:path.join(root,'artifacts','microsoft-lookup.png')});
+  const online=await send({type:'LOOKUP',text:'run',online:true});assert.equal(online.meaning,'微软：跑');assert.ok(online.saved);assert.equal(online.saved.preferredMeaning,'跑；我自己编辑的释义');
+  assert.equal((await send({type:'LOOKUP',text:'run',online:true})).cached,true);assert.equal(microsoftRequests.length,2);
+  await page.getByRole('button',{name:'测试微软连接（可能计费）',exact:true}).click();await page.locator('#confirm').getByRole('button',{name:'确认',exact:true}).click();await page.locator('#microsoft-feedback').getByText(/连接成功/).waitFor();assert.equal(microsoftRequests.length,3);assert.deepEqual(microsoftRequests[2].body,[{Text:'hello'}]);
+  record('Microsoft settings save sends no request; local-first fallback, explicit online lookup, minimal payload and real connection-test request verified');
+  assert.ok(!JSON.stringify(await send({type:'EXPORT'})).includes('private-microsoft-test-key'));assert.ok(!JSON.stringify(await send({type:'GET_MICROSOFT_SETTINGS'})).includes('private-microsoft-test-key'));
+  for(const type of ['GET_MICROSOFT_SETTINGS','SAVE_MICROSOFT_SETTINGS','DELETE_MICROSOFT_KEY','TEST_MICROSOFT']){const result=await worker.evaluate(async({id,type})=>(await chrome.scripting.executeScript({target:{tabId:id},func:kind=>chrome.runtime.sendMessage({type:kind}),args:[type]}))[0].result,{id:tabId,type});assert.equal(result.ok,false);}
+  record('Microsoft key stays outside page responses and backups; content scripts cannot access or change its settings');
+  await send({type:'SAVE_MICROSOFT_SETTINGS',settings:{...msSettings,endpoint:msSettings.endpoint.replace('/ms','/ms-fail')}});
+  const failed=await send({type:'LOOKUP',text:'run',online:true});assert.equal(failed.provider,'local');assert.match(failed.warning,/HTTP 429/);assert.equal(failed.saved.preferredMeaning,'跑；我自己编辑的释义');
+  const failedMiss=await send({type:'LOOKUP',text:'another unlisted phrase for azure fixture'});assert.equal(failedMiss.status,'error');assert.match(failedMiss.error,/HTTP 429/);
+  await send({type:'DELETE_MICROSOFT_KEY'});const msDeleted=await send({type:'GET_MICROSOFT_SETTINGS'});assert.equal(msDeleted.hasKey,false);assert.equal(msDeleted.settings.enabled,false);const beforeDisabled=microsoftRequests.length;assert.equal((await send({type:'LOOKUP',text:'run',online:true})).needsMicrosoftSettings,true);assert.equal(microsoftRequests.length,beforeDisabled);
+  record('Microsoft 429 preserves local results and favorites; deleting key disables online calls and clears cache');
   await send({type:'SET_UI_PREFERENCES',patch:{x:0.25,y:0.35,size:40,opacity:0.8}});
   await context.close();context=null;
   context=await chromium.launchPersistentContext(profile,{channel:'msedge',headless:true,args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`]});

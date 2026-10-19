@@ -3,11 +3,14 @@ import { preferences, preferencePatch } from './lib/preferences.js';
 import { readState, mutateState } from './lib/storage.js';
 import { lookupLocal } from './lib/dictionary.js';
 import { validateSettings, hostPattern, callProvider } from './lib/providers.js';
+import { microsoftSettings, translateMicrosoft } from './lib/microsoft.js';
+import { resolveLookup } from './lib/lookup.js';
 
 chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'});
 const managerUrl = chrome.runtime.getURL('manager.html');
 const widgetUrl = chrome.runtime.getURL('widget.html');
 const cache = new Map();
+const microsoftCache = new Map();
 async function openManager(hash='') { await chrome.tabs.create({url:managerUrl + hash}); }
 chrome.action.onClicked.addListener(()=>openManager());
 chrome.commands.onCommand.addListener(async command => {
@@ -19,7 +22,7 @@ chrome.commands.onCommand.addListener(async command => {
     await chrome.tabs.sendMessage(tab.id,{type:'TRIGGER_LOOKUP'});
   } catch { await openManager('#unsupported'); }
 });
-const privileged = new Set(['STATE','EXPORT','IMPORT','DELETE_ENTRY','EDIT_ENTRY','DELETE_HISTORY','CLEAR_HISTORY','GET_SETTINGS','SAVE_SETTINGS','DELETE_KEY','TEST_CONNECTION']);
+const privileged = new Set(['STATE','EXPORT','IMPORT','DELETE_ENTRY','EDIT_ENTRY','DELETE_HISTORY','CLEAR_HISTORY','GET_SETTINGS','SAVE_SETTINGS','DELETE_KEY','TEST_CONNECTION','GET_MICROSOFT_SETTINGS','SAVE_MICROSOFT_SETTINGS','DELETE_MICROSOFT_KEY','TEST_MICROSOFT']);
 const widgetOnly = new Set(['WIDGET_DATA','SET_UI_PREFERENCES','SET_AI_ENABLED']);
 async function broadcastPreferences(value) {
   const tabs=await chrome.tabs.query({});
@@ -33,6 +36,14 @@ function sourceFor(message,sender) {
   return cleanSource({type,url,title:sender.tab.title,timestampSeconds:type==='youtube'?message.source?.timestampSeconds:undefined});
 }
 async function settingsAndKey() { return chrome.storage.local.get(['ai','apiKey']); }
+async function microsoftLookup(settings,key,text,test=false){
+  if(!await chrome.permissions.contains({origins:[hostPattern(settings.endpoint)]}))throw new Error('微软 API 站点权限已撤销，请重新保存微软配置');
+  const cacheKey=JSON.stringify([text,settings.endpoint,settings.region,'v3-en-zh-Hans']);
+  if(!test&&microsoftCache.has(cacheKey))return {meaning:microsoftCache.get(cacheKey),cached:true};
+  const meaning=await translateMicrosoft(settings,key,text);
+  if(!test){if(microsoftCache.size>=200)microsoftCache.delete(microsoftCache.keys().next().value);microsoftCache.set(cacheKey,meaning);}
+  return {meaning,cached:false};
+}
 async function handle(message,sender) {
   const trusted = sender.url?.split('#')[0] === managerUrl && !sender.tab?.url?.startsWith('http');
   const widget = sender.url?.split('#')[0] === widgetUrl;
@@ -76,12 +87,33 @@ async function handle(message,sender) {
       const source = sourceFor(message,sender);
       const state = await readState();
       const saved = state.vocabulary.find(e=>e.canonicalForm===canonicalForm) || null;
-      let result;
-      try { result = await lookupLocal(originalText); }
-      catch { result = {canonicalForm,status:'error',error:'读取本地词典失败，请检查扩展文件是否完整'}; }
+      const {microsoft,microsoftKey}=await chrome.storage.local.get(['microsoft','microsoftKey']);
+      const result=await resolveLookup(originalText,{local:lookupLocal,enabled:!!microsoft?.enabled,configured:!!microsoftKey,online:message.online===true,translate:text=>microsoftLookup(microsoftSettings(microsoft),microsoftKey,text)});
       const history = {id:uid(),originalText,canonicalForm,meaning:result.meaning||'',context,source,status:result.status,createdAt:now()};
       await mutateState(s=>s.history.unshift(history));
-      return {...history,phonetic:result.phonetic,saved,error:result.error};
+      return {...history,phonetic:result.phonetic,saved,error:result.error,provider:result.provider,warning:result.warning,cached:result.cached,needsMicrosoftSettings:result.needsMicrosoftSettings};
+    }
+    case 'GET_MICROSOFT_SETTINGS': {const {microsoft,microsoftKey}=await chrome.storage.local.get(['microsoft','microsoftKey']);return {settings:microsoftSettings(microsoft),hasKey:!!microsoftKey};}
+    case 'SAVE_MICROSOFT_SETTINGS': {
+      const settings=microsoftSettings(message.settings);
+      if(!await chrome.permissions.contains({origins:[hostPattern(settings.endpoint)]}))throw new Error('尚未授予微软 API 站点访问权限');
+      const old=await chrome.storage.local.get(['microsoft','microsoftKey']);const update={microsoft:settings};
+      if(typeof message.key==='string'&&message.key.trim()){
+        if(message.key.length>2000||/[\r\n]/.test(message.key))throw new Error('微软密钥格式无效');
+        update.microsoftKey=message.key.trim();
+      }else if(old.microsoftKey&&new URL(old.microsoft.endpoint).origin!==new URL(settings.endpoint).origin)throw new Error('更换微软 API 域名时请重新填写对应 Key');
+      if(settings.enabled&&!update.microsoftKey&&!old.microsoftKey)throw new Error('启用联网查词前请填写微软 API Key');
+      await chrome.storage.local.set(update);microsoftCache.clear();return true;
+    }
+    case 'DELETE_MICROSOFT_KEY': {
+      await chrome.storage.local.remove('microsoftKey');
+      const {microsoft}=await chrome.storage.local.get('microsoft');if(microsoft)await chrome.storage.local.set({microsoft:{...microsoft,enabled:false}});
+      microsoftCache.clear();return true;
+    }
+    case 'TEST_MICROSOFT': {
+      const {microsoft,microsoftKey}=await chrome.storage.local.get(['microsoft','microsoftKey']);
+      if(!microsoftKey)throw new Error('请先保存微软 API Key');
+      return microsoftLookup(microsoftSettings(microsoft),microsoftKey,'hello',true);
     }
     case 'FAVORITE_STATUS': {
       const canonicalForm = canonicalize(queryText(message.text));
@@ -133,6 +165,7 @@ async function handle(message,sender) {
       return {text};
     }
     case 'OPEN_SETTINGS': await openManager('#settings');return true;
+    case 'OPEN_MICROSOFT_SETTINGS': await openManager('#microsoft');return true;
     default: throw new Error('不支持的操作');
   }
 }
