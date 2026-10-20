@@ -21,6 +21,17 @@ export function queryText(value) {
   if (text.length > 200 || !/[a-z]/i.test(text) || /[\u0000-\u001f]/.test(text)) throw new Error('请选择 200 字符以内的英文单词或短语');
   return text;
 }
+export function translationDirection(value='en-zh') {
+  if(!['en-zh','zh-en'].includes(value))throw new Error('翻译方向无效');
+  return value;
+}
+export function translationText(value,direction='en-zh') {
+  if(translationDirection(direction)==='en-zh')return queryText(value);
+  if(typeof value!=='string'||!value.trim())throw new Error('请输入要翻译的中文');
+  const text=value.normalize('NFKC').trim().replace(/\s+/g,' ');
+  if(text.length>200||!/[\p{Script=Han}]/u.test(text)||/[\u0000-\u001f]/.test(text))throw new Error('请输入 200 字符以内的中文，可包含英文术语');
+  return text;
+}
 export function limited(value, max = 1000) { return typeof value === 'string' ? value.slice(0,max) : ''; }
 export function safeUrl(value) {
   try { const u = new URL(value); return ['https:','http:'].includes(u.protocol) && !u.username && !u.password ? u.href : ''; } catch { return ''; }
@@ -54,6 +65,7 @@ export function cleanSource(source) {
   if (source.title) result.title = limited(source.title, 300);
   if (Number.isFinite(source.timestampSeconds) && source.timestampSeconds >= 0) result.timestampSeconds = Math.floor(source.timestampSeconds);
   if (Number.isInteger(source.pageNumber) && source.pageNumber > 0) result.pageNumber = source.pageNumber;
+  if (typeof source.documentId==='string' && /^[a-f0-9]{64}$/.test(source.documentId)) result.documentId=source.documentId;
   return result;
 }
 export function searchEntries(entries, search) {
@@ -84,7 +96,8 @@ export function validateBackup(data) {
   });
   const history = data.history.map(h => {
     if (!h || !['success','not_found','error'].includes(h.status)) fail();
-    return { id:check(h.id,100), originalText:queryText(h.originalText), canonicalForm:canonicalize(h.originalText), meaning:limited(h.meaning,4000), context:limited(h.context), source:source(h.source), status:h.status, createdAt:date(h.createdAt) };
+    const direction=translationDirection(h.direction),originalText=translationText(h.originalText,direction);
+    return { id:check(h.id,100), originalText, canonicalForm:canonicalize(originalText), meaning:limited(h.meaning,4000), context:limited(h.context), source:source(h.source), status:h.status, createdAt:date(h.createdAt),...(direction==='zh-en'?{direction}:{}) };
   });
   for (const list of [vocabulary,history]) if (new Set(list.map(x=>x.id)).size !== list.length) fail();
   if (new Set(vocabulary.map(e=>e.canonicalForm)).size !== vocabulary.length) fail();

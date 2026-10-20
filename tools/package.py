@@ -6,8 +6,11 @@ output = root / f'拾词-Edge-v{version}.zip'
 files = []
 for directory in ('extension', 'docs', 'tools', 'tests'):
     files.extend(p for p in (root / directory).rglob('*') if p.is_file() and '__pycache__' not in p.parts)
-files.extend(root / p for p in ('.gitignore', 'README.md', 'THIRD_PARTY_NOTICES.md', 'package.json'))
-files.extend(root / 'artifacts' / p for p in ('manager.png', 'lookup.png', 'settings.png', 'widget-favorites.png', 'widget-settings.png', 'microsoft-settings.png', 'microsoft-lookup.png', 'browser-results.json'))
+files.extend(root / p for p in ('.gitignore', '.gitattributes', 'README.md', 'THIRD_PARTY_NOTICES.md', 'package.json'))
+files.extend(root / 'artifacts' / p for p in ('manager.png', 'lookup.png', 'settings.png', 'widget-favorites.png', 'widget-settings.png', 'widget-lookup.png', 'widget-lookup-results.json', 'microsoft-settings.png', 'microsoft-lookup.png', 'pdf-reader.png', 'pdf-page.png', 'documents-results.json', 'browser-results.json'))
+files.extend((root / 'artifacts').glob('theme-*.png'))
+files.append(root / 'artifacts' / 'theme-review.json')
+files.extend(root / 'artifacts' / p for p in ('manual-results.json','manual-completion.png','manual-chinese-english.png','widget-chinese-english.png'))
 with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
     for file in sorted(files):
         archive.write(file, file.relative_to(root).as_posix())

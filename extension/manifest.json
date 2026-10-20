@@ -1,20 +1,21 @@
 {
   "manifest_version": 3,
   "name": "拾词 · 主动查词与记录",
-  "version": "0.3.0",
+  "version": "0.7.0",
   "description": "主动选词查中文释义，本地保存收藏与历史。",
-  "permissions": ["activeTab", "scripting", "storage"],
+  "permissions": ["activeTab", "scripting", "storage", "contextMenus"],
   "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
   "background": { "service_worker": "background.js", "type": "module" },
-  "action": { "default_title": "打开拾词单词本" },
+  "icons": { "16": "assets/icon-16.png", "32": "assets/icon-32.png", "48": "assets/icon-48.png", "128": "assets/icon-128.png" },
+  "action": { "default_title": "打开拾词单词本", "default_icon": { "16": "assets/icon-16.png", "32": "assets/icon-32.png", "48": "assets/icon-48.png", "128": "assets/icon-128.png" } },
   "options_page": "manager.html",
-  "content_scripts": [{ "matches": ["http://*/*", "https://*/*"], "js": ["content.js"], "run_at": "document_idle", "all_frames": false }],
-  "web_accessible_resources": [{ "resources": ["widget.html"], "matches": ["http://*/*", "https://*/*"] }],
+  "content_scripts": [{ "matches": ["http://*/*", "https://*/*"], "js": ["content.js"], "run_at": "document_idle", "all_frames": true, "match_about_blank": true, "match_origin_as_fallback": true }],
+  "web_accessible_resources": [{ "resources": ["widget.html", "assets/icon-128.png"], "matches": ["http://*/*", "https://*/*"] }],
   "commands": {
     "lookup-selection": {
       "suggested_key": { "default": "Alt+Shift+D" },
       "description": "查询选中的英文单词或短语"
     }
   },
-  "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'" }
+  "content_security_policy": { "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'" }
 }

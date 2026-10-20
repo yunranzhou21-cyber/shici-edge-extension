@@ -1,0 +1,15 @@
+{
+  "testedAt": "2026-10-20T09:54:46.645Z",
+  "browser": "Microsoft Edge headless",
+  "checks": [
+    "Local PDF canvas and selectable text render; selection lookup saves word, meaning, filename, page and fingerprint without uploading the PDF",
+    "PDF zoom and source metadata survive backup export/import without duplicating favorites",
+    "Opening a local favorite requests its original file, rejects mismatched files and restores the correct PDF page",
+    "Image-only PDFs show an OCR limitation and invalid PDF/login-page bytes are rejected",
+    "Password-protected PDF opens locally; its password is cleared and excluded from backups",
+    "Extension shortcut handler reads selected text inside its own PDF reader without relying on content-script injection",
+    "Online PDF opens in the reader; Microsoft requery sends only the selected word and retains PDF URL/page metadata",
+    "Shortcut dispatch targets the focused cross-origin document frame, supports semantic document editors and avoids duplicate floating icons",
+    "Selection context-menu handler opens a real lookup while preserving available PDF page information"
+  ]
+}

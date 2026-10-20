@@ -35,18 +35,20 @@
   function expandWidget() {
     if(frame){collapseWidget();return;}
     if(host)close();
-    frame=el('iframe');frame.title='拾词收藏与设置';frame.src=chrome.runtime.getURL('widget.html');frame.referrerPolicy='no-referrer';
+    frame=el('iframe');frame.title='拾词查词、收藏与设置';frame.src=chrome.runtime.getURL('widget.html');frame.referrerPolicy='no-referrer';
     widgetRoot.append(frame);bubble.setAttribute('aria-expanded','true');placeWidget();
   }
   function applyPreferences(value) {
     uiPreferences=value;
+    if(window.top!==window)return;
     if(!value.visible){collapseWidget();widgetHost?.remove();widgetHost=null;return;}
     if(!widgetHost){
       widgetHost=el('div');widgetHost.id='shici-widget-host';
       widgetHost.style.cssText='all:initial!important;position:fixed!important;z-index:2147483646!important;display:block!important;';
       widgetRoot=widgetHost.attachShadow({mode:'open'});
-      const style=el('style');style.textContent=`:host{color-scheme:light}button{box-sizing:border-box;border:1px solid #ffffff85;border-radius:50%;background:#2e624e;color:#fff;font:600 21px/1 system-ui,"Microsoft YaHei",sans-serif;cursor:grab;touch-action:none;user-select:none;box-shadow:0 4px 18px #1236293d;display:grid;place-items:center;padding:0}button:hover{filter:brightness(1.1)}button:active{cursor:grabbing}button:focus-visible{outline:3px solid #81af85;outline-offset:3px}iframe{position:fixed;border:1px solid #d5e2d6;border-radius:18px;background:#fafcf8;box-shadow:0 14px 50px #173e2933;color-scheme:light}`;
-      bubble=el('button','拾');bubble.type='button';bubble.title='拾词：点击展开，拖动调整位置';bubble.setAttribute('aria-label','展开拾词收藏与设置');bubble.setAttribute('aria-expanded','false');
+      const style=el('style');style.textContent=`:host{color-scheme:dark}button{box-sizing:border-box;border:1px solid #7edfe99c;border-radius:50%;background:#131d38;cursor:grab;touch-action:none;user-select:none;box-shadow:0 5px 22px #08112666,0 0 15px #5eddd52e,0 0 6px #f16abc30;display:grid;place-items:center;padding:0;overflow:hidden}button:hover{filter:brightness(1.15)}button:active{cursor:grabbing}button:focus-visible{outline:3px solid #65e3ed;outline-offset:3px}.launcher-image{width:100%;height:100%;object-fit:cover;transform:scale(1.4);pointer-events:none;border-radius:inherit}iframe{position:fixed;border:1px solid #547394;border-radius:20px;background:#14203a;box-shadow:0 18px 60px #050b1d80,0 0 28px #4acfc31a;color-scheme:dark}`;
+      bubble=el('button');bubble.type='button';bubble.title='拾词：点击展开，拖动调整位置';bubble.setAttribute('aria-label','展开拾词查词、收藏与设置');bubble.setAttribute('aria-expanded','false');
+      const logo=el('img',null,'launcher-image');logo.src=chrome.runtime.getURL('assets/icon-128.png');logo.alt='';logo.draggable=false;bubble.append(logo);
       let suppressClick=false;
       bubble.addEventListener('pointerdown',event=>{
         if(event.button!==0)return;
@@ -83,18 +85,20 @@
   function close() {generation++;host?.remove();host=null;root=null;previousFocus?.focus?.({preventScroll:true});}
   function sensitive(node) {
     const element=node?.nodeType===1?node:node?.parentElement;
-    return !!element?.closest('input,textarea,[contenteditable]:not([contenteditable="false"]),[role="textbox"],[data-sensitive],[autocomplete="one-time-code"]');
+    if(element?.closest('input,textarea,[role="textbox"],[data-sensitive],[autocomplete="one-time-code"]'))return true;
+    return !!element?.closest('[contenteditable]:not([contenteditable="false"])')&&!element.closest('[role="document"],[role="doc-page"]');
   }
+  globalThis.__shiciProbeSelection=()=>{const selection=window.getSelection();const blocked=sensitive(document.activeElement)||sensitive(selection?.anchorNode)||sensitive(selection?.focusNode);return {selected:!blocked&&!!selection?.toString().trim(),focused:document.hasFocus()&&!['IFRAME','FRAME'].includes(document.activeElement?.tagName),blocked};};
   function shell(rect) {
     host?.remove();previousFocus=document.activeElement;
     host=el('div');host.id='shici-lookup-host';
     host.style.cssText='all:initial;position:fixed;z-index:2147483647;';
     root=host.attachShadow({mode:'open'});
     const style=el('style');style.textContent=`
-      :host{color-scheme:light}*{box-sizing:border-box}section{width:min(370px,calc(100vw - 24px));max-height: min(620px,calc(100vh - 24px));overflow:auto;background:#fff;color:#21352f;border:1px solid #d6e2dc;border-radius:16px;box-shadow:0 12px 48px #12362933;padding:20px;font:14px/1.6 system-ui,"Microsoft YaHei",sans-serif}header{display:flex;align-items:center;justify-content:space-between}h2{font:600 23px/1.3 system-ui;margin:12px 0;overflow-wrap:anywhere}p{margin:10px 0;white-space:pre-wrap;overflow-wrap:anywhere}small{color:#65796d}button{font:inherit;border:1px solid #d5dfda;background:#f7f9f6;color:#254c3e;border-radius:8px;padding:7px 11px;cursor:pointer}button:hover{background:#e9f1e9}button:focus-visible,textarea:focus-visible{outline:2px solid #287755;outline-offset:2px}button:disabled{opacity:.55;cursor:wait}.primary{background:#28674f;color:white;border-color:#28674f}.row{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}textarea{width:100%;min-height:72px;resize:vertical;border:1px solid #ccd9d0;border-radius:8px;padding:9px;font:inherit;color:#21352f;background:#fff}.error{color:#a23d30}.status{color:#2b7352}details{margin:10px 0}summary{cursor:pointer}label{display:block;margin-top:10px}a{color:#276d51}`;
+      :host{color-scheme:dark}*{box-sizing:border-box}section{width:min(370px,calc(100vw - 24px));max-height:min(620px,calc(100vh - 24px));overflow:auto;background:radial-gradient(ellipse at 100% 0,#284f6459,transparent 65%),linear-gradient(155deg,#1b2644,#121c35);color:#eff4ff;border:1px solid #547394;border-radius:18px;box-shadow:0 18px 55px #050b1d80;padding:20px;font:14px/1.6 system-ui,"Microsoft YaHei",sans-serif}header{display:flex;align-items:center;justify-content:space-between;padding-bottom:10px;border-bottom:1px solid #425679}.card-brand{display:flex;gap:9px;align-items:center}.card-brand img{width:32px;height:32px;border-radius:9px}h2{font:600 23px/1.3 system-ui;margin:12px 0;overflow-wrap:anywhere}p{margin:10px 0;white-space:pre-wrap;overflow-wrap:anywhere}small{color:#b0bfd7}button{font:inherit;border:1px solid #405579;background:#203150;color:#eff4ff;border-radius:9px;padding:7px 11px;cursor:pointer}button:hover{background:#2c4165}button:focus-visible,textarea:focus-visible,summary:focus-visible,a:focus-visible{outline:2px solid #65e3ed;outline-offset:2px}button:disabled{opacity:.55;cursor:wait}.primary{background:linear-gradient(110deg,#b2efb6,#64e1e7 58%,#91b7ff);color:#0e263b;border-color:transparent;font-weight:650}.primary:hover{background:linear-gradient(110deg,#c8facb,#89f0f2 58%,#b0ccff)}.row{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}textarea{width:100%;min-height:72px;resize:vertical;border:1px solid #405579;border-radius:9px;padding:9px;font:inherit;color:#eff4ff;background:#111d36}.error{color:#ffb7aa}.status{color:#b0efba}details{margin:10px 0}summary{cursor:pointer;color:#b0efba}label{display:block;margin-top:10px;color:#cfdbed}a{color:#65e3ed}::selection{background:#65e3ed45}`;
     root.append(style);
     const card=el('section');card.setAttribute('role','dialog');card.setAttribute('aria-label','拾词查词');
-    const header=el('header');header.append(el('small','拾词 · 主动查词'));
+    const header=el('header'),brand=el('div',null,'card-brand'),logo=el('img');logo.src=chrome.runtime.getURL('assets/icon-128.png');logo.alt='';logo.draggable=false;brand.append(logo,el('small','拾词 · 主动查词'));header.append(brand);
     const dismiss=el('button','×');dismiss.setAttribute('aria-label','关闭查词卡片');dismiss.onclick=close;header.append(dismiss);card.append(header);root.append(card);document.documentElement.append(host);
     const left=Math.max(12,Math.min(rect?.left||window.innerWidth-400,window.innerWidth-382));
     const top=Math.max(12,Math.min((rect?.bottom||20)+8,window.innerHeight-330));
@@ -121,6 +125,7 @@
     const status=el('p',result.saved?'已收藏':'未收藏','status');card.append(status);
     const message=result.status==='success'?(result.provider==='microsoft'?`微软翻译 · 英文 → 简体中文${result.cached?'（缓存）':''}`:'本地词典 · 一般释义'):result.error||'本地词典未命中。可填写释义收藏、配置微软联网查词，或主动请求 AI。';
     card.append(el('small',message));
+    if(result.source?.type==='pdf'){const metadata=el('small',`${result.source.title||'PDF'}${result.source.pageNumber?' · 第 '+result.source.pageNumber+' 页':''}`);metadata.style.display='block';card.append(metadata);}
     if(result.warning)card.append(el('p',result.warning,'error'));
     const label=el('label','中文释义（收藏前可修改）');const meaning=el('textarea');meaning.value=result.meaning||'';meaning.maxLength=4000;label.append(meaning);card.append(label);
     const contextLabel=el('label','局部原句（可补充）');const context=el('textarea');context.value=result.context||'';context.maxLength=1000;contextLabel.append(context);card.append(contextLabel);
@@ -150,7 +155,8 @@
     // Read a bounded neighboring text node/block only at the explicit command.
     const anchor=selection?.anchorNode;
     const container=anchor?.nodeType===1?anchor:anchor?.parentElement;
-    const block=container?.closest('p,li,blockquote,figcaption,h1,h2,h3') || container;
+    const textLayer=container?.closest('.textLayer');
+    const block=textLayer?(container.closest('span')||textLayer):(container?.closest('p,li,blockquote,figcaption,h1,h2,h3,[role="doc-page"]')||container);
     let raw='';
     if(!blocked&&text&&block&&!['BODY','HTML'].includes(block.tagName)){
       const walker=document.createTreeWalker(block,NodeFilter.SHOW_TEXT,{acceptNode(node){
@@ -160,6 +166,9 @@
     }
     const index=raw.indexOf(text||'');
     const context=index>=0?raw.slice(Math.max(0,index-240),index+Math.min(text.length,200)+240).trim():'';
+    const ownReader=location.href.split(/[?#]/)[0]===chrome.runtime.getURL('reader.html');
+    const pdfPage=container?.closest('.page[data-page-number]');
+    const source=ownReader?{...globalThis.__shiciDocumentSource}:pdfPage&&container?.closest('.textLayer')?{type:'pdf',pageNumber:Number(pdfPage.dataset.pageNumber),title:document.title}:{type:'web',title:document.title};
     const card=shell(rect);const current=++generation;
     if(!text){card.append(el('p',blocked?'此输入区域不取词。请在普通网页正文选中英文，或到单词本手动输入。':'请先选中英文单词或短语'));return;}
     if(text.length>200){card.append(el('p','请选择 200 字符以内的英文单词或短语'));return;}
@@ -171,12 +180,14 @@
     const badge=el('p','正在检查收藏…');card.append(badge);
     send({type:'FAVORITE_STATUS',text}).then(saved=>{if(current===generation)badge.textContent=saved?'已收藏':'未收藏';}).catch(()=>{});
     try {
-      const result=await send({type:'LOOKUP',text,context,source:{timestampSeconds}});
+      const result=await send({type:'LOOKUP',text,context,source:{...source,timestampSeconds}});
       if(current!==generation)return;
       loading.remove();badge.remove();renderResult(card,{...result,videoPaused});
     }catch(error){if(current===generation){loading.textContent=error.message;badge.remove();}}
   }
   document.addEventListener('keydown',event=>{if(event.key==='Escape'){if(host){event.preventDefault();close();}if(frame)collapseWidget(true);}},true);
+  document.addEventListener('SHICI_LOOKUP_SELECTION',()=>trigger());
+  document.addEventListener('SHICI_DOCUMENT_CHANGED',()=>{if(host)close();});
   chrome.runtime.onMessage.addListener(message=>{if(message.type==='TRIGGER_LOOKUP')trigger();if(message.type==='UI_PREFERENCES_CHANGED')applyPreferences(message.preferences);});
   send({type:'GET_UI_PREFERENCES'}).then(applyPreferences).catch(()=>{});
 })();

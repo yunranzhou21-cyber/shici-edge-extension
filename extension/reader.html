@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>拾词 · PDF 阅读器</title><link rel="icon" href="assets/icon-32.png"><link rel="stylesheet" href="vendor/pdfjs/web/pdf_viewer.css"><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="reader.css"></head>
+<body>
+  <header><a class="brand" href="manager.html"><img class="brand-image" src="assets/icon-128.png" alt="" width="44" height="44">拾词<span>PDF 阅读器</span></a><div class="actions"><label class="file-button">选择本地 PDF<input id="file" type="file" accept="application/pdf,.pdf"></label><button id="book">收藏与历史</button></div></header>
+  <section class="intro"><h1 id="title">打开 PDF，选词查译并收藏</h1><p>文件在本机解析，不上传 PDF。选中英文后使用快捷键，或点击“查询选中文字”。</p><form id="url-form"><input id="url" type="url" placeholder="也可粘贴在线 PDF 链接（HTTPS）" aria-label="在线 PDF 链接"><button>打开在线 PDF</button></form></section>
+  <p id="status" role="status">支持有文字层的 PDF。扫描件暂不含 OCR；Word/PPT 可先导出为 PDF。</p>
+  <nav id="toolbar" hidden aria-label="PDF 阅读工具"><button id="prev">上一页</button><label>第 <input id="page-number" type="number" min="1" value="1" aria-label="PDF 页码"> / <span id="page-count">0</span> 页</label><button id="next">下一页</button><label>缩放 <select id="zoom" aria-label="PDF 缩放"><option value="0.75">75%</option><option value="1" selected>100%</option><option value="1.25">125%</option><option value="1.5">150%</option><option value="2">200%</option></select></label><button id="lookup" class="primary">查询选中文字</button><small id="shortcut"></small></nav>
+  <main id="workspace"><div id="page-shell" class="page" data-page-number="1" hidden><canvas id="canvas"></canvas><div id="text-layer" class="textLayer"></div></div><div id="empty">PDF 会显示在这里<br><small>本地文件无需开启浏览器的全盘或本地文件访问权限。</small></div></main>
+  <dialog id="password-dialog"><form id="password-form"><h2>PDF 需要密码</h2><p id="password-hint">密码仅用于本次本机解密，不保存、不发送。</p><input id="password" type="password" autocomplete="off" aria-label="PDF 密码" required><div class="actions"><button id="cancel-password" type="button">取消</button><button class="primary">打开 PDF</button></div></form></dialog>
+  <script src="content.js"></script><script type="module" src="reader.js"></script>
+</body></html>

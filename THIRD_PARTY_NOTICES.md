@@ -1,5 +1,19 @@
 # 第三方来源
 
+## 品牌图片
+
+- 用户于 2026-10-19 提供 `Gemini_Generated_Image_lvzs80lvzs80lvzs.jpg`，并要求用于图标和界面风格。
+- 原图随项目保存在 `extension/assets/brand-source.jpg`；PNG 图标仅进行尺寸缩放和格式转换，图案未重新生成。工具：`tools/make_brand_icons.ps1`。
+- 此图片不属于 ECDICT 或 PDF.js 的许可内容，不将其标记为这些第三方项目的授权资产。
+
+## PDF.js
+
+- Mozilla 官方项目：https://github.com/mozilla/pdf.js
+- 包：`pdfjs-dist`，版本 `6.4.299`，来自 npm 官方注册表，下载时校验 SHA-512 integrity。
+- 完整下载摘要和收录文件见 `extension/vendor/pdfjs/metadata.json`；原始 Apache-2.0 许可见 `extension/vendor/pdfjs/LICENSE`。
+- 脚本、Worker、文字层 CSS、CMap、标准字体和 WASM 文件随扩展本地打包，无运行时远程代码下载。上游附带的字体/资源许可一并保留。
+- 参考官方 API 示例：https://mozilla.github.io/pdf.js/examples/ 。未修改上游库文件，只编写本项目阅读器。
+
 ## ECDICT
 
 - 上游：https://github.com/skywind3000/ECDICT

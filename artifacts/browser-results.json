@@ -1,5 +1,5 @@
 {
-  "testedAt": "2026-10-19T08:01:06.942Z",
+  "testedAt": "2026-10-20T09:55:19.151Z",
   "browser": "Microsoft Edge headless",
   "checks": [
     "Unpacked extension loaded in Microsoft Edge",

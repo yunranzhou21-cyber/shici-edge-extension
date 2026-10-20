@@ -38,7 +38,7 @@ try{
   const send=msg=>page.evaluate(async message=>{const r=await chrome.runtime.sendMessage(message);if(!r.ok)throw new Error(r.error);return r.data;},msg);
   record('Chinese manager loads with genuinely empty state');
   await page.getByRole('button',{name:'＋ 手动查词'}).click();
-  await page.getByRole('textbox',{name:'英文单词或短语',exact:true}).fill('run');await page.getByRole('button',{name:'查询',exact:true}).click();
+  await page.getByRole('combobox',{name:'英文单词或短语',exact:true}).fill('run');await page.getByRole('button',{name:'查询',exact:true}).click();
   await page.locator('#lookup-result h2').filter({hasText:'run'}).waitFor();
   assert.ok((await page.getByRole('textbox',{name:'本次中文释义'}).inputValue()).includes('跑'));
   await page.getByRole('textbox',{name:'本次中文释义'}).fill('跑；我自己编辑的释义');
@@ -80,6 +80,7 @@ try{
   await article.reload();await bubble.waitFor();const restoredPosition=await bubble.boundingBox();assert.ok(Math.abs(restoredPosition.x-movedPosition.x)<3,JSON.stringify({original,movedPosition,restoredPosition,position}));assert.ok(Math.abs(restoredPosition.y-movedPosition.y)<3);
   record('Dragging moves the circular icon without opening the panel and remembers position after reload');
   await bubble.click();const widget=article.frameLocator('#shici-widget-host iframe');
+  await widget.locator('#favorites-tab').click();
   await widget.getByText('run',{exact:true}).waitFor();
   await widget.getByRole('searchbox',{name:'搜索收藏单词'}).fill('自己编辑');await widget.getByText('跑；我自己编辑的释义',{exact:true}).waitFor();
   await widget.getByRole('searchbox',{name:'搜索收藏单词'}).fill('not-in-book');await widget.getByText('没有匹配的收藏',{exact:true}).waitFor();

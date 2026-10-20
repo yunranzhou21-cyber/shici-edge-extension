@@ -1,0 +1,16 @@
+{
+  "testedAt": "2026-10-20T09:54:42.455Z",
+  "browser": "Microsoft Edge headless",
+  "checks": [
+    "Expanded widget defaults to manual lookup; typing and opening never query or save",
+    "Invalid input is rejected without creating history",
+    "Enter queries offline; edited meaning saves once, as a manual record, only on explicit favorite",
+    "Known word forms show existing records and append new meanings without replacing the preferred meaning",
+    "Saved words are searchable in the favorites tab; switching tabs preserves the lookup draft",
+    "Dictionary misses allow manual meaning and favorite, with an empty-meaning guard",
+    "Unconfigured Microsoft lookup guides to settings while keeping the local meaning and favorite status",
+    "Favorite status arrives during online lookup; delayed responses cannot replace a newly entered word",
+    "Explicit Microsoft lookup renders the translation, reuses cache, and never overwrites favorites",
+    "Favorites survive closing and page reload; the host page cannot read the panel and Escape still closes it"
+  ]
+}

@@ -1,46 +1,72 @@
-import { canonicalize, queryText, limited, favorite, cleanSource, uid, now, validateBackup, mergeBackup, makeBackup, searchEntries } from './lib/core.js';
+import { canonicalize, queryText, translationText, translationDirection, limited, favorite, cleanSource, uid, now, validateBackup, mergeBackup, makeBackup, searchEntries } from './lib/core.js';
 import { preferences, preferencePatch } from './lib/preferences.js';
 import { readState, mutateState } from './lib/storage.js';
-import { lookupLocal } from './lib/dictionary.js';
+import { lookupLocal, suggestLocal } from './lib/dictionary.js';
 import { validateSettings, hostPattern, callProvider } from './lib/providers.js';
 import { microsoftSettings, translateMicrosoft } from './lib/microsoft.js';
 import { resolveLookup } from './lib/lookup.js';
+import { isPdfUrl, chooseSelectionFrame, readerUrl } from './lib/documents.js';
 
 chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'});
 const managerUrl = chrome.runtime.getURL('manager.html');
 const widgetUrl = chrome.runtime.getURL('widget.html');
+const readerBase=chrome.runtime.getURL('reader.html');
 const cache = new Map();
 const microsoftCache = new Map();
 async function openManager(hash='') { await chrome.tabs.create({url:managerUrl + hash}); }
-chrome.action.onClicked.addListener(()=>openManager());
+chrome.action.onClicked.addListener(async tab=>{if(tab?.url)await chrome.storage.session.set({lastDocumentUrl:tab.url,lastDocumentTitle:tab.title||''});await openManager();});
+export async function triggerLookup(tab){
+  if(!tab?.id)return;
+  if(tab.url?.split(/[?#]/)[0]===readerBase){await chrome.tabs.sendMessage(tab.id,{type:'TRIGGER_LOOKUP'},{frameId:0});return;}
+  try{
+    await chrome.scripting.executeScript({target:{tabId:tab.id,allFrames:true},files:['content.js']});
+    const frames=await chrome.scripting.executeScript({target:{tabId:tab.id,allFrames:true},func:()=>globalThis.__shiciProbeSelection?.()||null});
+    if(!frames.some(f=>f.result?.selected)&&isPdfUrl(tab.url)){await openReader({type:'pdf',url:tab.url,title:tab.title});return;}
+    await chrome.tabs.sendMessage(tab.id,{type:'TRIGGER_LOOKUP'},{frameId:chooseSelectionFrame(frames)});
+  }catch{if(isPdfUrl(tab.url))await openReader({type:'pdf',url:tab.url,title:tab.title});else await openManager('#unsupported');}
+}
+async function openReader(source={}){await chrome.tabs.create({url:readerUrl(readerBase,source)});}
 chrome.commands.onCommand.addListener(async command => {
   if (command !== 'lookup-selection') return;
   const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
-  if (!tab?.id) return;
-  try {
-    await chrome.scripting.executeScript({target:{tabId:tab.id},files:['content.js']});
-    await chrome.tabs.sendMessage(tab.id,{type:'TRIGGER_LOOKUP'});
-  } catch { await openManager('#unsupported'); }
+  await triggerLookup(tab);
 });
+chrome.runtime.onInstalled.addListener(()=>{
+  chrome.contextMenus.removeAll(()=>{chrome.contextMenus.create({id:'shici-document-selection',title:'用拾词翻译并收藏所选英文',contexts:['selection']});chrome.contextMenus.create({id:'shici-open-pdf',title:'在拾词阅读器打开此 PDF',contexts:['link'],targetUrlPatterns:['*://*/*.pdf*','file:///*.pdf*']});});
+});
+export async function handleContextSelection(info,tab){
+  if(info.menuItemId==='shici-open-pdf'){await openReader({type:'pdf',url:safeDocumentUrl(info.linkUrl),title:'PDF 文档'});return;}
+  if(info.menuItemId!=='shici-document-selection')return;
+  if(info.editable){await openManager('#unsupported');return;}
+  try{
+    const text=queryText(info.selectionText),url=info.frameUrl||info.pageUrl||tab?.url;
+    const id=uid();const source=cleanSource({type:isPdfUrl(url)?'pdf':'web',url,title:tab?.title,pageNumber:Number(new URL(url).hash.match(/page=(\d+)/)?.[1])||undefined});
+    await chrome.storage.session.set({['capture-'+id]:{text,source,createdAt:Date.now()}});await openManager('#capture-'+id);
+  }catch{await openManager('#unsupported');}
+}
+function safeDocumentUrl(value){try{return ['http:','https:'].includes(new URL(value).protocol)?value:undefined;}catch{return undefined;}}
+chrome.contextMenus.onClicked.addListener(handleContextSelection);
 const privileged = new Set(['STATE','EXPORT','IMPORT','DELETE_ENTRY','EDIT_ENTRY','DELETE_HISTORY','CLEAR_HISTORY','GET_SETTINGS','SAVE_SETTINGS','DELETE_KEY','TEST_CONNECTION','GET_MICROSOFT_SETTINGS','SAVE_MICROSOFT_SETTINGS','DELETE_MICROSOFT_KEY','TEST_MICROSOFT']);
-const widgetOnly = new Set(['WIDGET_DATA','SET_UI_PREFERENCES','SET_AI_ENABLED']);
+const widgetOnly = new Set(['WIDGET_DATA','SET_UI_PREFERENCES','SET_AI_ENABLED','SUGGEST']);
 async function broadcastPreferences(value) {
   const tabs=await chrome.tabs.query({});
   await Promise.allSettled(tabs.filter(t=>t.id).map(t=>chrome.tabs.sendMessage(t.id,{type:'UI_PREFERENCES_CHANGED',preferences:value})));
 }
 function sourceFor(message,sender) {
+  if([readerBase,managerUrl,widgetUrl].includes(sender.url?.split(/[?#]/)[0]))return cleanSource(message.source);
   if (!sender.tab) return cleanSource(message.source);
-  const url = sender.tab.url || sender.url;
+  const url = safeDocumentUrl(sender.url)||sender.tab.url;
   let type = 'web';
   try { if (/(^|\.)youtube\.com$/.test(new URL(url).hostname)) type='youtube'; } catch {}
-  return cleanSource({type,url,title:sender.tab.title,timestampSeconds:type==='youtube'?message.source?.timestampSeconds:undefined});
+  if(type==='web'&&message.source?.type==='pdf')type='pdf';
+  return cleanSource({type,url,title:message.source?.title||sender.tab.title,pageNumber:type==='pdf'?message.source?.pageNumber:undefined,timestampSeconds:type==='youtube'?message.source?.timestampSeconds:undefined});
 }
 async function settingsAndKey() { return chrome.storage.local.get(['ai','apiKey']); }
-async function microsoftLookup(settings,key,text,test=false){
+async function microsoftLookup(settings,key,text,test=false,direction='en-zh'){
   if(!await chrome.permissions.contains({origins:[hostPattern(settings.endpoint)]}))throw new Error('微软 API 站点权限已撤销，请重新保存微软配置');
-  const cacheKey=JSON.stringify([text,settings.endpoint,settings.region,'v3-en-zh-Hans']);
+  const cacheKey=JSON.stringify([text,settings.endpoint,settings.region,'v3',direction]);
   if(!test&&microsoftCache.has(cacheKey))return {meaning:microsoftCache.get(cacheKey),cached:true};
-  const meaning=await translateMicrosoft(settings,key,text);
+  const meaning=await translateMicrosoft(settings,key,text,fetch,direction);
   if(!test){if(microsoftCache.size>=200)microsoftCache.delete(microsoftCache.keys().next().value);microsoftCache.set(cacheKey,meaning);}
   return {meaning,cached:false};
 }
@@ -50,6 +76,21 @@ async function handle(message,sender) {
   if (sender.id !== chrome.runtime.id || !message || typeof message.type !== 'string' || (privileged.has(message.type) && !trusted)) throw new Error('请求来源不受支持');
   if(widgetOnly.has(message.type) && !trusted && !widget)throw new Error('请求来源不受支持');
   switch (message.type) {
+    case 'SUGGEST': return suggestLocal(message.text);
+    case 'OPEN_READER': {
+      const {lastDocumentUrl,lastDocumentTitle}=await chrome.storage.session.get(['lastDocumentUrl','lastDocumentTitle']);
+      const url=safeDocumentUrl(sender.tab?.url)||lastDocumentUrl;
+      await openReader(isPdfUrl(url)?{type:'pdf',url:safeDocumentUrl(url),title:sender.tab?.title||lastDocumentTitle}:{});return true;
+    }
+    case 'OPEN_SOURCE': {
+      if(!trusted&&!widget&&sender.url?.split(/[?#]/)[0]!==readerBase)throw new Error('请求来源不受支持');
+      const source=cleanSource(message.source);if(source.type!=='pdf')throw new Error('此来源不是 PDF');await openReader(source);return true;
+    }
+    case 'GET_CAPTURE': {
+      if(!trusted||typeof message.id!=='string'||!/^[\w-]{1,100}$/.test(message.id))throw new Error('请求来源不受支持');
+      const key='capture-'+message.id,stored=(await chrome.storage.session.get(key))[key];await chrome.storage.session.remove(key);
+      if(!stored||Date.now()-stored.createdAt>10*60*1000)throw new Error('选词记录已过期，请重新选择');return stored;
+    }
     case 'GET_UI_PREFERENCES': return preferences((await chrome.storage.local.get('uiPreferences')).uiPreferences);
     case 'SAVE_WIDGET_POSITION': {
       if(!Number.isFinite(message.x)||!Number.isFinite(message.y))throw new Error('位置无效');
@@ -81,15 +122,18 @@ async function handle(message,sender) {
     case 'OPEN_VOCABULARY': await openManager('#vocabulary');return true;
     case 'STATE': return readState();
     case 'LOOKUP': {
-      const originalText = queryText(message.text);
+      const direction=translationDirection(message.direction),reverse=direction==='zh-en';
+      if(reverse&&!trusted&&!widget)throw new Error('请在手动查词中使用中文译英');
+      const originalText = translationText(message.text,direction);
       const canonicalForm = canonicalize(originalText);
       const context = limited(message.context);
       const source = sourceFor(message,sender);
       const state = await readState();
-      const saved = state.vocabulary.find(e=>e.canonicalForm===canonicalForm) || null;
+      let saved = reverse?null:state.vocabulary.find(e=>e.canonicalForm===canonicalForm) || null;
       const {microsoft,microsoftKey}=await chrome.storage.local.get(['microsoft','microsoftKey']);
-      const result=await resolveLookup(originalText,{local:lookupLocal,enabled:!!microsoft?.enabled,configured:!!microsoftKey,online:message.online===true,translate:text=>microsoftLookup(microsoftSettings(microsoft),microsoftKey,text)});
-      const history = {id:uid(),originalText,canonicalForm,meaning:result.meaning||'',context,source,status:result.status,createdAt:now()};
+      const result=await resolveLookup(originalText,{local:reverse?async()=>({status:'not_found',canonicalForm}):lookupLocal,enabled:!!microsoft?.enabled,configured:!!microsoftKey,online:reverse||message.online===true,translate:text=>microsoftLookup(microsoftSettings(microsoft),microsoftKey,text,false,direction)});
+      if(reverse&&result.meaning){try{saved=state.vocabulary.find(e=>e.canonicalForm===canonicalize(queryText(result.meaning)))||null;}catch{}}
+      const history = {id:uid(),originalText,canonicalForm,meaning:result.meaning||'',context,source,status:result.status,createdAt:now(),...(reverse?{direction}:{})};
       await mutateState(s=>s.history.unshift(history));
       return {...history,phonetic:result.phonetic,saved,error:result.error,provider:result.provider,warning:result.warning,cached:result.cached,needsMicrosoftSettings:result.needsMicrosoftSettings};
     }

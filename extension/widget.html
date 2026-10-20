@@ -1,11 +1,32 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>拾词收藏与设置</title><link rel="stylesheet" href="widget.css"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>拾词查词、收藏与设置</title><link rel="icon" href="assets/icon-32.png"><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="widget.css"></head>
 <body>
-  <header><div class="brand"><span>拾</span><div>拾词<small>阅读不停，随手查看</small></div></div><button id="close" class="icon" aria-label="收起拾词浮框">×</button></header>
-  <nav aria-label="浮框页面"><button id="favorites-tab" class="selected" aria-selected="true">收藏 <span id="count">0</span></button><button id="settings-tab" aria-selected="false">设置</button></nav>
+  <header><div class="brand"><img class="brand-image" src="assets/icon-128.png" alt="" width="44" height="44"><div>拾词<small>阅读不停，随手查看</small></div></div><button id="close" class="icon" aria-label="收起拾词浮框">×</button></header>
+  <nav aria-label="浮框页面"><button id="lookup-tab" class="selected" aria-selected="true">查词</button><button id="favorites-tab" aria-selected="false">收藏 <span id="count">0</span></button><button id="settings-tab" aria-selected="false">设置</button></nav>
   <p id="feedback" role="status" hidden></p>
-  <section id="favorites-view"><input type="search" id="search" aria-label="搜索收藏单词" placeholder="搜索英文或中文释义…"><div id="favorites"></div><button id="more" hidden>继续显示</button><button id="open-book" class="wide">打开完整单词本 ↗</button></section>
+  <section id="lookup-view">
+    <form id="lookup-form">
+      <label class="direction-label">翻译方向<select id="lookup-direction"><option value="en-zh">英文 → 中文</option><option value="zh-en">中文 → 英文</option></select></label>
+      <label for="lookup-text" id="lookup-input-label">英文单词或短语</label>
+      <div class="query-row"><div class="autocomplete"><input type="search" id="lookup-text" maxlength="200" placeholder="输入英文，按 Enter 查词" required autocomplete="off" spellcheck="false"><ul id="lookup-suggestions" class="suggestions" hidden></ul></div><button id="lookup-submit" type="submit" class="primary">查词</button></div>
+      <details class="optional-context"><summary>补充原句（可选）</summary><textarea id="lookup-context" aria-label="本次原句" maxlength="1000" rows="2" placeholder="没有原句也可以查词和收藏"></textarea></details>
+    </form>
+    <p id="lookup-message" role="status" class="hint">本地词典优先，查询后可编辑释义并手动收藏。</p>
+    <div id="lookup-reverse" hidden></div>
+    <div id="lookup-result" hidden>
+      <div class="result-heading"><h2 id="lookup-word" class="word"></h2><span id="lookup-status" class="badge"></span></div>
+      <p id="lookup-meta" class="hint"></p>
+      <label for="lookup-meaning">本次中文释义（可修改）</label><textarea id="lookup-meaning" maxlength="4000" rows="4" placeholder="未查到时，可手动填写释义再收藏"></textarea>
+      <details id="lookup-saved" hidden><summary>查看已有记录</summary><div id="lookup-existing"></div></details>
+      <button id="lookup-favorite" class="primary wide">收藏</button>
+      <div class="lookup-actions"><button id="lookup-online">微软联网查词</button><button id="lookup-explain">解释原句</button></div>
+      <p id="lookup-ai" class="context" hidden></p>
+      <button id="lookup-configure" class="wide" hidden>打开微软联网设置 ↗</button>
+    </div>
+    <button id="lookup-reader" class="wide subtle">文档 / PDF 阅读器 ↗</button>
+  </section>
+  <section id="favorites-view" hidden><input type="search" id="search" aria-label="搜索收藏单词" placeholder="搜索英文或中文释义…"><div id="favorites"></div><button id="more" hidden>继续显示</button><button id="open-book" class="wide">打开完整单词本 ↗</button><button id="open-reader" class="wide">文档 / PDF 阅读器 ↗</button></section>
   <section id="settings-view" hidden>
     <div class="setting"><h2>查词快捷键</h2><div class="shortcut"><kbd id="shortcut">读取中…</kbd><button id="shortcuts">修改快捷键 ↗</button></div><p>在 Edge 的扩展快捷键页面修改；返回后这里会显示当前绑定。</p></div>
     <div class="setting"><h2>圆形图标</h2><label>图标大小<select id="size"><option value="40">小 · 40 px</option><option value="48">标准 · 48 px</option><option value="56">大 · 56 px</option></select></label><label>透明度 <output id="opacity-value">90%</output><input type="range" id="opacity" min="40" max="100" step="5" value="90"></label><button id="reset-position" class="wide">重置到右侧</button><p>拖动圆形图标调整位置，松开后自动记住。点击页面空白或按 Escape 可收起浮框。</p></div>

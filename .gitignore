@@ -4,3 +4,4 @@ __pycache__/
 node_modules/
 *.log
 *.zip
+/拾词-Edge-v*/

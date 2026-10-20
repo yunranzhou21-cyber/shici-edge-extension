@@ -1,0 +1,106 @@
+{
+  "reviewedAt": "2026-10-20T09:57:45.266Z",
+  "surfaces": [
+    {
+      "name": "theme-empty",
+      "width": 1440,
+      "documentWidth": 1440,
+      "scheme": "dark",
+      "images": [
+        {
+          "src": "assets/icon-128.png",
+          "loaded": true
+        }
+      ]
+    },
+    {
+      "name": "theme-manager",
+      "width": 1440,
+      "documentWidth": 1440,
+      "scheme": "dark",
+      "images": [
+        {
+          "src": "assets/icon-128.png",
+          "loaded": true
+        }
+      ]
+    },
+    {
+      "name": "theme-editor",
+      "width": 1440,
+      "documentWidth": 1440,
+      "scheme": "dark",
+      "images": [
+        {
+          "src": "assets/icon-128.png",
+          "loaded": true
+        }
+      ]
+    },
+    {
+      "name": "theme-settings",
+      "width": 1440,
+      "documentWidth": 1440,
+      "scheme": "dark",
+      "images": [
+        {
+          "src": "assets/icon-128.png",
+          "loaded": true
+        }
+      ]
+    },
+    {
+      "name": "theme-manager-narrow",
+      "width": 390,
+      "documentWidth": 390,
+      "scheme": "dark",
+      "images": [
+        {
+          "src": "assets/icon-128.png",
+          "loaded": true
+        }
+      ]
+    },
+    {
+      "name": "theme-settings-narrow",
+      "width": 390,
+      "documentWidth": 390,
+      "scheme": "dark",
+      "images": [
+        {
+          "src": "assets/icon-128.png",
+          "loaded": true
+        }
+      ]
+    },
+    {
+      "name": "theme-widget-narrow",
+      "width": 390,
+      "documentWidth": 390,
+      "scheme": "normal",
+      "images": []
+    }
+  ],
+  "launcher": {
+    "loaded": true,
+    "draggable": false
+  },
+  "widget": {
+    "viewportWidth": 366,
+    "documentWidth": 366,
+    "images": [
+      {
+        "loaded": true
+      }
+    ]
+  },
+  "palette": {
+    "--bg": "#10182f",
+    "--text": "#eff4ff",
+    "--muted": "#b0bfd7",
+    "--quiet": "#9aacc9",
+    "--input": "#111d36",
+    "--cyan": "#65e3ed",
+    "--mint": "#b0efba"
+  }
+}

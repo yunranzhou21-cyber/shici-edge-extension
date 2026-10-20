@@ -1,10 +1,11 @@
 import { searchEntries, canonicalize, safeUrl } from './lib/core.js';
 import { PROVIDERS, hostPattern, validateSettings } from './lib/providers.js';
 import { microsoftSettings } from './lib/microsoft.js';
+import { attachAutocomplete, renderReverseResult } from './lib/manual.js';
 const $=id=>document.getElementById(id);
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text)n.textContent=text;if(cls)n.className=cls;return n;};
 async function send(message){const r=await chrome.runtime.sendMessage(message);if(!r?.ok)throw new Error(r?.error||'扩展连接失败');return r.data;}
-let state={vocabulary:[],history:[]}, tab='vocabulary', lookup;
+let state={vocabulary:[],history:[]}, tab='vocabulary', lookup,lookupVersion=0;
 function notice(text,error=false){$('notice').textContent=text;$('notice').classList.toggle('error',error);$('notice').hidden=!text;}
 function action(parent,label,callback,cls){const b=el('button',label,cls);b.onclick=async()=>{b.disabled=true;try{await callback();}catch(e){notice(e.message,true);}finally{b.disabled=false;}};parent.append(b);return b;}
 async function confirmAction(message){$('confirm-message').textContent=message;const d=$('confirm');d.showModal();return new Promise(resolve=>d.addEventListener('close',()=>resolve(d.returnValue==='confirm'),{once:true}));}
@@ -12,6 +13,7 @@ async function editMeaning(title,value){$('editor-title').textContent=title;$('e
 function sourceNode(source){
   const area=el('div',null,'meta');
   const url=safeUrl(source?.url);
+  if(source?.type==='pdf'){const b=el('button',`${source.title||'PDF'}${source.pageNumber?' · 第 '+source.pageNumber+' 页':''} ↗`);b.onclick=()=>send({type:'OPEN_SOURCE',source}).catch(e=>notice(e.message,true));area.append(b);if(!url)area.append(el('span',' · 本地文件需重新选择'));return area;}
   if(url){const link=el('a',source.title||new URL(url).hostname);const u=new URL(url);if(source.type==='youtube'&&source.timestampSeconds!==undefined)u.searchParams.set('t',Math.floor(source.timestampSeconds)+'s');link.href=u.href;link.target='_blank';link.rel='noreferrer';area.append(link);if(source.timestampSeconds!==undefined)area.append(document.createTextNode(` · ${Math.floor(source.timestampSeconds)} 秒`));}
   else area.textContent='未记录来源';
   return area;
@@ -25,16 +27,18 @@ function renderRecords(){
   let shown=0;
   function more(){list.querySelector('.load-more')?.remove();const batch=entries.slice(shown,shown+100);shown+=batch.length;
     for(const item of batch){
-      const isHistory=tab==='history',saved=state.vocabulary.find(e=>e.canonicalForm===(item.canonicalForm||canonicalize(item.originalText)));
+      const isHistory=tab==='history',reverse=isHistory&&item.direction==='zh-en',saved=state.vocabulary.find(e=>e.canonicalForm===(reverse?canonicalize(item.meaning):item.canonicalForm||canonicalize(item.originalText)));
       const card=el('article',null,'record'),head=el('div',null,'record-head'),titles=el('div');
       const word=el('h2',isHistory?item.originalText:item.canonicalForm,'word');
       if(isHistory&&saved)word.append(el('span','已收藏','tag'));
+      if(reverse)word.append(el('span','中文 → 英文','tag'));
       titles.append(word);if(!isHistory)titles.append(el('p',item.forms.join(' · '),'muted'));
       head.append(titles);const actions=el('div',null,'record-actions');head.append(actions);card.append(head);
-      card.append(el('p',(isHistory?item.meaning:item.preferredMeaning)||(item.status==='error'?'词典读取失败':'词典未命中'),'meaning'));
+      card.append(el('p',(isHistory?item.meaning:item.preferredMeaning)||(reverse?(item.status==='error'?'翻译失败':'尚未取得英文译文'):item.status==='error'?'词典读取失败':'词典未命中'),'meaning'));
       if(isHistory){
         if(item.context)card.append(el('p',item.context,'context'));card.append(sourceNode(item.source));
-        action(actions,saved?'追加语境':'收藏',async()=>{const meaning=await editMeaning(saved?'追加本次释义与语境':'收藏前编辑释义',item.meaning||'');if(meaning===null)return;await send({type:'FAVORITE',item:{...item,meaning},append:!!saved});await refresh();});
+        if(reverse)action(actions,'查看译文 / 收藏',async()=>{$('manual').hidden=false;$('manual-direction').value='zh-en';$('manual-direction').dispatchEvent(new Event('change'));$('lookup-word').value=item.originalText;lookup={...item,saved};renderLookup();$('manual').scrollIntoView({block:'start'});});
+        else action(actions,saved?'追加语境':'收藏',async()=>{const meaning=await editMeaning(saved?'追加本次释义与语境':'收藏前编辑释义',item.meaning||'');if(meaning===null)return;await send({type:'FAVORITE',item:{...item,meaning},append:!!saved});await refresh();});
         action(actions,'删除',async()=>{if(await confirmAction('删除这条查询历史？收藏不受影响。')){await send({type:'DELETE_HISTORY',id:item.id});await refresh();}},'danger');
       }else{
         const details=el('details');details.append(el('summary',`${item.occurrences.length} 条语境记录`));
@@ -49,26 +53,34 @@ function renderRecords(){
 }
 function showTab(value){tab=['vocabulary','history','settings'].includes(value)?value:'vocabulary';document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('selected',b.dataset.tab===tab));$('page-title').textContent={vocabulary:'收藏',history:'查询历史',settings:'设置'}[tab];$('page-subtitle').textContent={vocabulary:'留下值得再看一次的词与语境。',history:'查询是一段经过，收藏由你决定。',settings:'让工具适合你的阅读方式。'}[tab];$('settings-view').hidden=tab!=='settings';$('records-view').hidden=tab==='settings';$('clear-history').hidden=tab!=='history';renderRecords();}
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{location.hash=b.dataset.tab;});
-function readHash(){if(location.hash==='#unsupported'){showTab('vocabulary');$('manual').hidden=false;notice('当前页面无法读取选区（如内置 PDF、浏览器内部页或受限阅读器）。请在这里手动输入英文。');}else if(location.hash==='#microsoft'){showTab('settings');$('microsoft-form').scrollIntoView();}else showTab(location.hash.slice(1));}
+async function applyCapture(id){try{const captured=await send({type:'GET_CAPTURE',id});$('manual').hidden=false;$('manual-direction').value='en-zh';$('manual-direction').dispatchEvent(new Event('change'));$('lookup-word').value=captured.text;$('lookup-context').value='';const current=++lookupVersion,result=await send({type:'LOOKUP',text:captured.text,source:captured.source});if(current!==lookupVersion)return;lookup=result;renderLookup();await refresh();notice('已读取主动选中的文字；文档原句无法取得时留空。');}catch(e){notice(e.message,true);}}
+function readHash(){if(location.hash.startsWith('#capture-')){showTab('vocabulary');applyCapture(location.hash.slice(9));}else if(location.hash==='#unsupported'){showTab('vocabulary');$('manual').hidden=false;notice('当前阅读器无法直接读取选区。可点击“文档 / PDF 阅读”打开 PDF，或在这里手动输入。');}else if(location.hash==='#microsoft'){showTab('settings');$('microsoft-form').scrollIntoView();}else showTab(location.hash.slice(1));}
 window.addEventListener('hashchange',readHash);
 $('search').oninput=renderRecords;
 $('manual-toggle').onclick=()=>{$('manual').hidden=!$('manual').hidden;if(!$('manual').hidden)$('lookup-word').focus();};
+$('open-reader').onclick=()=>send({type:'OPEN_READER'}).catch(e=>notice(e.message,true));
 $('lookup-form').onsubmit=async event=>{
-  event.preventDefault();const b=event.submitter;b.disabled=true;$('lookup-result').textContent='查询中…';
-  try{lookup=await send({type:'LOOKUP',text:$('lookup-word').value,context:$('lookup-context').value,source:{type:'manual'}});renderLookup();await refresh();}catch(e){$('lookup-result').textContent=e.message;}finally{b.disabled=false;}
+  event.preventDefault();const b=$('manual-submit');if(b.disabled)return;const current=++lookupVersion;b.disabled=true;lookup=null;$('lookup-result').textContent='查询中…';
+  try{const result=await send({type:'LOOKUP',text:$('lookup-word').value,context:$('manual-direction').value==='zh-en'?'':$('lookup-context').value,direction:$('manual-direction').value,source:{type:'manual'}});if(current!==lookupVersion)return;lookup=result;renderLookup();await refresh();}catch(e){if(current===lookupVersion)$('lookup-result').textContent=e.message;}finally{if(current===lookupVersion)b.disabled=false;}
 };
+function invalidateManual(){++lookupVersion;lookup=null;$('lookup-result').replaceChildren();$('manual-submit').disabled=false;}
+$('lookup-word').addEventListener('input',invalidateManual);
+const autocomplete=attachAutocomplete($('lookup-word'),$('manual-suggestions'),{send,enabled:()=>$('manual-direction').value==='en-zh'});
+$('manual-direction').onchange=()=>{autocomplete.close();invalidateManual();const reverse=$('manual-direction').value==='zh-en';$('lookup-word').setAttribute('aria-label',reverse?'要翻译的中文':'英文单词或短语');$('lookup-word').placeholder=reverse?'输入中文词语或短句':'英文单词或短语，例如 running';$('lookup-context').hidden=reverse;$('manual-submit').textContent=reverse?'翻译':'查询';$('manual-hint').textContent=reverse?'中文译英使用微软联网翻译，需先在设置中启用；输入本身不会联网。':'输入英文时提供本地补全建议；选定后按 Enter 或点击查询。';};
 function renderLookup(){
-  const area=$('lookup-result');area.replaceChildren();area.append(el('h2',lookup.originalText));
-  const status=el('p',lookup.saved?'已收藏':'未收藏');area.append(status);
-  area.append(el('p',lookup.status==='success'?(lookup.provider==='microsoft'?`微软翻译 · 英文 → 简体中文${lookup.cached?'（缓存）':''}`:'本地词典 · 一般释义'):lookup.error||'本地词典未命中，可手动填写释义收藏。','muted'));
-  if(lookup.warning)area.append(el('p',lookup.warning,'lookup-warning'));
-  const meaning=el('textarea');meaning.value=lookup.meaning||'';meaning.maxLength=4000;meaning.setAttribute('aria-label','本次中文释义');area.append(meaning);
+  const item=lookup,current=lookupVersion;
+  if(item.direction==='zh-en'){renderReverseResult($('lookup-result'),item,{send,onSaved:()=>refresh(),openSettings:()=>{location.hash='microsoft';}});return;}
+  const area=$('lookup-result');area.replaceChildren();area.append(el('h2',item.originalText));
+  const status=el('p',item.saved?'已收藏':'未收藏');area.append(status);
+  area.append(el('p',item.status==='success'?(item.provider==='microsoft'?`微软翻译 · 英文 → 简体中文${item.cached?'（缓存）':''}`:'本地词典 · 一般释义'):item.error||'本地词典未命中，可手动填写释义收藏。','muted'));
+  if(item.warning)area.append(el('p',item.warning,'lookup-warning'));
+  const meaning=el('textarea');meaning.value=item.meaning||'';meaning.maxLength=4000;meaning.setAttribute('aria-label','本次中文释义');area.append(meaning);
   const actions=el('div',null,'inline');area.append(actions);
-  const save=action(actions,lookup.saved?'追加本次原句 / 释义':'收藏',async()=>{lookup.saved=await send({type:'FAVORITE',item:{...lookup,meaning:meaning.value,context:$('lookup-context').value},append:!!lookup.saved});status.textContent='已收藏';save.textContent='追加本次原句 / 释义';await refresh();},'primary');
-  if(lookup.saved){const old=el('details');old.append(el('summary','查看已有记录'));old.append(el('p',lookup.saved.preferredMeaning));for(const o of lookup.saved.occurrences)old.append(el('p',`${o.originalText} · ${o.meaning}\n${o.context||''}`));area.append(old);}
+  const save=action(actions,item.saved?'追加本次原句 / 释义':'收藏',async()=>{item.saved=await send({type:'FAVORITE',item:{...item,meaning:meaning.value,context:$('lookup-context').value},append:!!item.saved});status.textContent='已收藏';save.textContent='追加本次原句 / 释义';await refresh();},'primary');
+  if(item.saved){const old=el('details');old.append(el('summary','查看已有记录'));old.append(el('p',item.saved.preferredMeaning));for(const o of item.saved.occurrences)old.append(el('p',`${o.originalText} · ${o.meaning}\n${o.context||''}`));area.append(old);}
   const output=el('p');output.setAttribute('role','status');area.append(output);
-  action(actions,'微软联网查词',async()=>{output.textContent='正在请求微软翻译…';const result=await send({type:'LOOKUP',text:lookup.originalText,context:$('lookup-context').value,source:lookup.source,online:true});if(result.needsMicrosoftSettings){output.textContent=result.warning;location.hash='microsoft';return;}lookup=result;renderLookup();await refresh();});
-  action(actions,'解释原句',async()=>{output.textContent='解释中…';try{const result=await send({type:'EXPLAIN',text:lookup.originalText,context:$('lookup-context').value});if(result.needsSettings){output.textContent='尚未配置或启用 AI，本次未调用模型。';location.hash='settings';$('ai-form').scrollIntoView({behavior:'smooth'});}else output.textContent=(result.cached?'缓存结果 · ':'')+result.text;}catch(e){output.textContent=e.message;}});
+  action(actions,'微软联网查词',async()=>{output.textContent='正在请求微软翻译…';const result=await send({type:'LOOKUP',text:item.originalText,context:$('lookup-context').value,source:item.source,online:true});if(current!==lookupVersion)return;if(result.needsMicrosoftSettings){output.textContent=result.warning;location.hash='microsoft';return;}lookup=result;renderLookup();await refresh();});
+  action(actions,'解释原句',async()=>{output.textContent='解释中…';try{const result=await send({type:'EXPLAIN',text:item.originalText,context:$('lookup-context').value});if(current!==lookupVersion)return;if(result.needsSettings){output.textContent='尚未配置或启用 AI，本次未调用模型。';location.hash='settings';$('ai-form').scrollIntoView({behavior:'smooth'});}else output.textContent=(result.cached?'缓存结果 · ':'')+result.text;}catch(e){if(current===lookupVersion)output.textContent=e.message;}});
 }
 $('clear-history').onclick=async()=>{try{if(await confirmAction('清空全部查询历史？收藏和原语境记录会保留。')){await send({type:'CLEAR_HISTORY'});await refresh();}}catch(e){notice(e.message,true);}};
 $('shortcuts').onclick=()=>send({type:'OPEN_SHORTCUTS'}).catch(e=>notice(e.message,true));
